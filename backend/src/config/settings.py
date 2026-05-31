@@ -1,0 +1,26 @@
+from typing import Annotated
+
+from pydantic import ConfigDict
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    model_config = ConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    aws_cognito_user_pool_id: str
+    aws_cognito_client_id: str
+    aws_cognito_region: str
+    aws_cognito_jwks_url: str
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+    database_url: str
+    secret_key: str
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+SettingsDep = Annotated[Settings, None]

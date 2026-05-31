@@ -1,0 +1,28 @@
+[project]
+name = "sgi-pro-backend"
+version = "0.1.0"
+description = "SGI Pro Backend API - ISO Management System Certification Tool"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi==0.136.3",
+    "uvicorn[standard]",
+    "pydantic==2.10.6",
+    "pydantic-settings",
+    "sqlmodel",
+    "asyncpg",
+    "psycopg[binary]",
+    "boto3",
+    "python-jose[cryptography]",
+    "httpx",
+    "cachetools",
+]
+
+[tool.fastapi]
+entrypoint = "src.main:app"
+
+[tool.uv]
+dev-dependencies = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
