@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-SGI Pro is an automation certification tool for ISO management systems (ISO 9001, 14001, 45001). The repo has a frontend (React) and planned backend (FastAPI).
+SGI Pro is an automation certification tool for ISO management systems (ISO 9001, 14001, 45001). The repo has a frontend (React) and a backend (FastAPI).
 
 ## Frontend Commands
 
@@ -12,7 +12,24 @@ pnpm dev          # Start dev server
 pnpm build        # TypeScript check + Vite build (run lint first)
 pnpm lint         # ESLint check
 pnpm preview      # Preview production build
+pnpm install-hooks  # Install the git pre-commit hook
 ```
+
+## Make Targets (repo root)
+
+```bash
+make help            # List all available targets
+make install-hooks   # Install the git pre-commit hook
+make uninstall-hooks # Remove the git pre-commit hook
+make lint            # Run all linters (frontend eslint + backend ruff)
+make test            # Run all tests (frontend build + backend pytest)
+make build           # Production frontend build
+make clean           # Remove build artifacts
+```
+
+## Pre-commit Hook
+
+A pre-commit hook runs lint and typecheck on staged frontend/backend files. Install with `make install-hooks` (or `pnpm --dir frontend install-hooks`). The hook source is `scripts/pre-commit.sh` and is symlinked into `.git/hooks/pre-commit`. Bypass with `git commit --no-verify` when needed.
 
 ## Key Stack Details
 
