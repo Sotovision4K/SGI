@@ -6,7 +6,7 @@ export function LogoutPage() {
 
   useEffect(() => {
     signoutRedirect();
-  }, []);
+  }, [signoutRedirect]);
 
   return (
     <div className="min-h-screen bg-bg-soft flex items-center justify-center">

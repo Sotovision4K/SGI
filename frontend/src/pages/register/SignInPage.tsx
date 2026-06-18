@@ -1,17 +1,18 @@
 import { useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 
 export function SignInPage() {
+  const navigate = useNavigate();
   const { isAuthenticated, isLoading, signinRedirect, error } = useAuth();
 
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      window.location.replace('/api/v1/process');
+      navigate('/processes', { replace: true });
     }
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, navigate]);
 
   const handleSignIn = () => {
     signinRedirect();

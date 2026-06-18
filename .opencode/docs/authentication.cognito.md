@@ -7,8 +7,8 @@
 - rename signin route with prefix /auth/signin
 - vcreate /auth/logout
 - create /auth/signup and change the existing one.
-- change /dashboard with /api/dashboard
-- dashboard must be a protected route
+- the post-auth landing is `/processes` (no `/dashboard` route exists in the frontend). Backend exposes `GET /api/v1/processes` for the list.
+- `/processes` must be a protected route, along with all `/processes/:processId/*` sub-routes.
 - implement a business type dropdown if the user has selected company
 - Remmeber client in spanish
 - On the api, all should be authenticated, so pass the require token
@@ -22,13 +22,14 @@ SIGNUP          CONFIRMAR EMAIL       LOGIN / SESIÓN
 Custom UI       Custom UI             useAuth handles everything.
 SignUpCommand   ConfirmSignUpCommand       │
 (SDK)           (SDK)                      ├─ auth.signinRedirect()
-                      │                    ├─ auth.user
-                      │                    ├─ auth.isAuthenticated
-                      └──► redirect ──────►├─ auth.signoutRedirect()
-                           a Hosted UI      └─ token automatic refresh
+                       │                    ├─ auth.user
+                       │                    ├─ auth.isAuthenticated
+                       └──► redirect ──────►├─ auth.signoutRedirect()
+                            a Hosted UI      └─ token automatic refresh
 
 - pass a searchParam on the route. 
-- the dashboard route should be a protected route.
+- the post-auth landing route should be a protected route.
+- all protected frontend routes use clean plural paths (e.g. `/processes`, `/processes/:processId/diagnose`). The API client (`lib/api-client.ts`) automatically prefixes `${VITE_API_BASE_URL}/api/v1` so frontend URLs never expose the API version.
 
 
 ## Backend
@@ -142,7 +143,7 @@ class CognitoPort(Protocol):
 
 -  create get_current_user(credentials: HTTPAuthorizationCredentials,  verifier: CognitoAdapter), depends on verify_token
 - Preffer dependency injection for this
--  create /api/dashboard endpoint
+-  create /api/v1/processes endpoint (list current user's processes). The legacy `/api/dashboard` route is deprecated.
 
 
 

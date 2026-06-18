@@ -3,7 +3,7 @@ import { useAuth } from 'react-oidc-context';
 import { FileText, ClipboardCheck, BarChart3, LogOut, ArrowLeft } from 'lucide-react';
 import { useProcess } from '../../hooks/useProcess';
 
-export const ProcessDashboardPage = () => {
+export const ProcessDetailPage = () => {
   const { processId } = useParams();
   const { user, signoutRedirect } = useAuth();
 
@@ -38,7 +38,7 @@ export const ProcessDashboardPage = () => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center gap-3">
-              <Link to="/api/v1/process" className="flex items-center gap-2 text-text-muted hover:text-primary transition-colors">
+              <Link to="/processes" className="flex items-center gap-2 text-text-muted hover:text-primary transition-colors">
                 <ArrowLeft className="w-5 h-5" />
               </Link>
               <div className="w-10 h-10 bg-primary rounded-lg flex items-center justify-center text-white text-sm font-extrabold">
@@ -86,7 +86,7 @@ export const ProcessDashboardPage = () => {
               Evalúa el estado actual de tu empresa frente a los requisitos ISO.
             </p>
             <Link
-              to={`/api/v1/process/${processId}/diagnose`}
+              to={`/processes/${processId}/diagnose`}
               className="w-full py-2 px-4 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors text-center"
             >
               Iniciar Diagnóstico
@@ -102,7 +102,7 @@ export const ProcessDashboardPage = () => {
               Genera y gestiona manuales, procedimientos y registros.
             </p>
             <Link
-              to={`/api/v1/process/${processId}/documents`}
+              to={`/processes/${processId}/documents`}
               className="w-full py-2 px-4 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors text-center"
             >
               Ver Documentos
@@ -118,7 +118,7 @@ export const ProcessDashboardPage = () => {
               Planifica y ejecuta auditorías internas de forma guiada.
             </p>
             <Link
-              to={`/api/v1/process/${processId}/audits`}
+              to={`/processes/${processId}/audits`}
               className="w-full py-2 px-4 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors text-center"
             >
               Gestionar Auditorías
@@ -134,10 +134,10 @@ export const ProcessDashboardPage = () => {
               Visualiza KPIs y métricas de desempeño del SGI.
             </p>
             <Link
-              to={`/api/v1/process/${processId}/indicators`}
+              to={`/processes/${processId}/indicators`}
               className="w-full py-2 px-4 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors text-center"
             >
-              Ver Dashboard
+              Ver Indicadores
             </Link>
           </div>
         </div>

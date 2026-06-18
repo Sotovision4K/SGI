@@ -123,7 +123,7 @@ export const ProcessListPage = () => {
                       <Trash2 className="w-5 h-5" />
                     </button>
                     <button
-                      onClick={() => navigate(`/api/v1/process/${process.id}/dashboard`)}
+                      onClick={() => navigate(`/processes/${process.id}`)}
                       className="px-4 py-2 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors"
                     >
                       Ver Proceso

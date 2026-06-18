@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
+import { useAuth } from 'react-oidc-context';
 import { Mail, Lock, AlertCircle, CheckCircle, ArrowRight, RefreshCw } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
@@ -21,6 +22,7 @@ type ConfirmFormData = z.infer<typeof confirmSchema>;
 
 export function ConfirmEmailPage() {
   const navigate = useNavigate();
+  const auth = useAuth();
   const [searchParams] = useSearchParams();
   const email = searchParams.get('email') || '';
 
@@ -69,7 +71,13 @@ export function ConfirmEmailPage() {
 
       setSuccess(true);
       setTimeout(() => {
-        navigate('/auth/signin');
+        const redirectTarget = (import.meta.env.VITE_REDIRECT_SIGN_IN as string | undefined) || '/processes';
+        if (auth.user?.id_token) {
+          window.history.replaceState({}, document.title, redirectTarget);
+          window.location.replace(redirectTarget);
+        } else {
+          auth.signinRedirect();
+        }
       }, SUCCESS_REDIRECT_DELAY_MS);
     } catch {
       setError('Ocurrió un error inesperado');

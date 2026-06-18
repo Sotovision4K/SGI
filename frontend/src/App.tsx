@@ -12,7 +12,7 @@ const SignUpPage = lazy(() => import('./pages/register/SignUpPage').then(m => ({
 const ConfirmEmailPage = lazy(() => import('./pages/register/ConfirmEmailPage').then(m => ({ default: m.ConfirmEmailPage })));
 const LogoutPage = lazy(() => import('./pages/auth/LogoutPage').then(m => ({ default: m.LogoutPage })));
 const ProcessListPage = lazy(() => import('./pages/process/ProcessListPage').then(m => ({ default: m.ProcessListPage })));
-const ProcessDashboardPage = lazy(() => import('./pages/process/ProcessDashboardPage').then(m => ({ default: m.ProcessDashboardPage })));
+const ProcessDetailPage = lazy(() => import('./pages/process/ProcessDetailPage').then(m => ({ default: m.ProcessDetailPage })));
 const DiagnosePage = lazy(() => import('./pages/process/DiagnosePage').then(m => ({ default: m.DiagnosePage })));
 const DocumentsPage = lazy(() => import('./pages/process/DocumentsPage').then(m => ({ default: m.DocumentsPage })));
 const AuditsPage = lazy(() => import('./pages/process/AuditsPage').then(m => ({ default: m.AuditsPage })));
@@ -38,7 +38,7 @@ function App() {
             <Route path="/auth/logout" element={<LogoutPage />} />
             <Route path="/confirm-email" element={<ConfirmEmailPage />} />
             <Route
-              path="/api/v1/process"
+              path="/processes"
               element={
                 <ProtectedRoute>
                   <ProcessListPage />
@@ -46,15 +46,15 @@ function App() {
               }
             />
             <Route
-              path="/api/v1/process/:processId/dashboard"
+              path="/processes/:processId"
               element={
                 <ProtectedRoute>
-                  <ProcessDashboardPage />
+                  <ProcessDetailPage />
                 </ProtectedRoute>
               }
             />
             <Route
-              path="/api/v1/process/:processId/diagnose"
+              path="/processes/:processId/diagnose"
               element={
                 <ProtectedRoute>
                   <DiagnosePage />
@@ -62,7 +62,7 @@ function App() {
               }
             />
             <Route
-              path="/api/v1/process/:processId/documents"
+              path="/processes/:processId/documents"
               element={
                 <ProtectedRoute>
                   <DocumentsPage />
@@ -70,7 +70,7 @@ function App() {
               }
             />
             <Route
-              path="/api/v1/process/:processId/audits"
+              path="/processes/:processId/audits"
               element={
                 <ProtectedRoute>
                   <AuditsPage />
@@ -78,7 +78,7 @@ function App() {
               }
             />
             <Route
-              path="/api/v1/process/:processId/indicators"
+              path="/processes/:processId/indicators"
               element={
                 <ProtectedRoute>
                   <IndicatorsPage />

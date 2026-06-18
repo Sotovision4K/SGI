@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate, useLocation } from 'react-router-dom';
+import { useApiAuthBridge } from '../../lib/use-api-auth';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -10,6 +11,8 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
   const auth = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useApiAuthBridge();
 
   useEffect(() => {
     if (!auth.isLoading && !auth.isAuthenticated) {

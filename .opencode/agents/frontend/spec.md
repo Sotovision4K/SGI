@@ -56,13 +56,13 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     useEffect(() => {
         if (!auth.isAuthenticated || !profile) return;
 
-        const onDashboard = location.pathname.startsWith('/dashboard');
+        const onProcesses = location.pathname.startsWith('/processes');
         const onOnboarding = location.pathname.startsWith('/onboarding');
 
-        if (!profile.onboardingComplete && onDashboard) {
+        if (!profile.onboardingComplete && onProcesses) {
             navigate('/onboarding', { replace: true });
         } else if (profile.onboardingComplete && onOnboarding) {
-            navigate('/dashboard', { replace: true });
+            navigate('/processes', { replace: true });
         }
     }, [auth.isAuthenticated, profile, location.pathname, navigate]);
 
@@ -71,7 +71,7 @@ export const ProtectedRoute = ({ children }: { children: React.ReactNode }) => {
     }
 
     if (auth.error) {
-        navigate('/home', { replace: true });
+        navigate('/auth/signin', { replace: true });
         return null;
     }
 
