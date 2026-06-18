@@ -16,6 +16,7 @@ dependencies = [
     "httpx",
     "cachetools",
     "mangum>=0.17.0",
+    "anthropic>=0.39.0",
 ]
 
 [tool.fastapi]

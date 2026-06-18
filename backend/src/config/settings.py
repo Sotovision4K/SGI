@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     aws_secret_access_key: str | None = None
     database_url: str
     secret_key: str
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-sonnet-4-5"
 
 
 @lru_cache

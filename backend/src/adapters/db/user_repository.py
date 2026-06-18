@@ -29,6 +29,7 @@ class CompanyTable(SQLModel, table=True):
     user_id: uuid.UUID = Field(index=True)
     business_type: str = Field(max_length=50)
     is_active: bool = Field(default=True)
+    name: str | None = Field(default=None, max_length=200)
 
 
 class ConsultantTable(SQLModel, table=True):

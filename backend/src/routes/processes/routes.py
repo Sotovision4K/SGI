@@ -1,109 +1,343 @@
-from fastapi import APIRouter
-from pydantic import BaseModel
-from typing import List
+from typing import Annotated, Any
+from uuid import UUID
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from pydantic import BaseModel, Field
+
+from src.config.settings import Settings, get_settings
+from src.domain.entities.finding import Finding
+from src.domain.entities.plan import Plan, Task
+from src.domain.entities.process import Process, ProcessStatus, IsoStandard
+from src.adapters.db.process_repository import ProcessRepository
+from src.adapters.llm.llm_port import LLMPort
+from src.adapters.llm.anthropic_adapter import get_anthropic_adapter
 from src.routes.user.auth import CurrentUserDep
 
 
 router = APIRouter(prefix="/api/v1/processes", tags=["processes"])
 
 
-class ProcessItem(BaseModel):
+def get_process_repository(settings: Settings = Depends(get_settings)) -> ProcessRepository:
+    return ProcessRepository(settings.database_url)
+
+
+ProcessRepositoryDep = Annotated[ProcessRepository, Depends(get_process_repository)]
+LLMDep = Annotated[LLMPort, Depends(get_anthropic_adapter)]
+
+
+# ---- Schemas ---------------------------------------------------------------
+
+
+class ProcessListItem(BaseModel):
     id: str
-    name: str
+    consultant_id: str
+    company_id: str
+    company_name: str | None = None
+    iso_standard: str
     status: str
-    progress: int
+    created_at: str
+    updated_at: str
 
 
 class ProcessListResponse(BaseModel):
-    items: List[ProcessItem] = []
-    total: int = 0
+    items: list[ProcessListItem]
+    total: int
+
+
+class CreateProcessRequest(BaseModel):
+    company_id: UUID
+    iso_standard: IsoStandard
 
 
 class ProcessDetailResponse(BaseModel):
     id: str
-    name: str
+    consultant_id: str
+    company_id: str
+    company_name: str | None = None
+    iso_standard: str
     status: str
-    progress: int
+    created_at: str
+    updated_at: str
 
 
-class CreateProcessRequest(BaseModel):
-    name: str
-    iso_standard: str | None = None
+class UpsertFindingsRequest(BaseModel):
+    answers: dict[str, Any] = Field(default_factory=dict)
+    free_text: str = ""
 
 
-class DiagnoseResponse(BaseModel):
+class FindingsResponse(BaseModel):
     process_id: str
-    content: str | None = None
+    answers: dict[str, Any]
+    free_text: str
+    updated_at: str
 
 
-class DiagnoseUpsertRequest(BaseModel):
-    content: str
+class TaskSchema(BaseModel):
+    id: str
+    title: str
+    description: str
+    priority: str
+    estimated_effort: str
+    owner_role: str
+    sort_order: int
 
 
-class SubResourceStubResponse(BaseModel):
+class PlanResponse(BaseModel):
     process_id: str
-    items: List[dict] = []
-    message: str = "En desarrollo"
+    summary_md: str
+    generated_at: str
+    tasks: list[TaskSchema]
+
+
+# ---- Helpers ---------------------------------------------------------------
+
+
+async def _hydrate_company_name(company_id: UUID, settings: Settings) -> str | None:
+    from src.adapters.db.user_repository import CompanyTable, get_engine
+    from sqlalchemy.ext.asyncio import AsyncSession
+    engine = get_engine(settings.database_url)
+    async with AsyncSession(engine) as session:
+        row = await session.get(CompanyTable, company_id)
+        return row.name if row else None
+
+
+def _process_to_item(process: Process, company_name: str | None) -> ProcessListItem:
+    return ProcessListItem(
+        id=str(process.id),
+        consultant_id=str(process.consultant_id),
+        company_id=str(process.company_id),
+        company_name=company_name,
+        iso_standard=process.iso_standard.value,
+        status=process.status.value,
+        created_at=process.created_at.isoformat(),
+        updated_at=process.updated_at.isoformat(),
+    )
+
+
+def _process_to_detail(process: Process, company_name: str | None) -> ProcessDetailResponse:
+    return ProcessDetailResponse(
+        id=str(process.id),
+        consultant_id=str(process.consultant_id),
+        company_id=str(process.company_id),
+        company_name=company_name,
+        iso_standard=process.iso_standard.value,
+        status=process.status.value,
+        created_at=process.created_at.isoformat(),
+        updated_at=process.updated_at.isoformat(),
+    )
+
+
+# ---- Endpoints -------------------------------------------------------------
 
 
 @router.get("", response_model=ProcessListResponse)
-async def list_processes(current_user: CurrentUserDep) -> ProcessListResponse:
-    return ProcessListResponse(items=[], total=0)
-
-
-@router.get("/{process_id}", response_model=ProcessDetailResponse)
-async def get_process(process_id: str, current_user: CurrentUserDep) -> ProcessDetailResponse:
-    return ProcessDetailResponse(
-        id=process_id,
-        name="",
-        status="draft",
-        progress=0,
-    )
+async def list_processes(
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessListResponse:
+    sub = current_user.get("sub")
+    consultant_id = UUID(sub) if sub else None
+    processes = await repo.list_processes(consultant_id=consultant_id)
+    items: list[ProcessListItem] = []
+    for p in processes:
+        name = await _hydrate_company_name(p.company_id, settings)
+        items.append(_process_to_item(p, name))
+    return ProcessListResponse(items=items, total=len(items))
 
 
 @router.post("", response_model=ProcessDetailResponse, status_code=201)
 async def create_process(
     payload: CreateProcessRequest,
     current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
 ) -> ProcessDetailResponse:
-    return ProcessDetailResponse(
-        id="",
-        name=payload.name,
-        status="draft",
-        progress=0,
+    sub = current_user.get("sub")
+    if not sub:
+        raise HTTPException(status_code=400, detail="Sub claim requerido")
+    process = Process(
+        consultant_id=UUID(sub),
+        company_id=payload.company_id,
+        iso_standard=payload.iso_standard,
     )
+    created = await repo.create_process(process)
+    name = await _hydrate_company_name(created.company_id, settings)
+    return _process_to_detail(created, name)
+
+
+@router.get("/{process_id}", response_model=ProcessDetailResponse)
+async def get_process(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    process = await repo.get_process(process_id)
+    if process is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    name = await _hydrate_company_name(process.company_id, settings)
+    return _process_to_detail(process, name)
 
 
 @router.delete("/{process_id}", status_code=204)
-async def delete_process(process_id: str, current_user: CurrentUserDep) -> None:
+async def delete_process(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> None:
+    process = await repo.get_process(process_id)
+    if process is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    # Slice 1: deletion is a no-op (full lifecycle in Slice 2/3)
     return None
 
 
-@router.get("/{process_id}/diagnose", response_model=DiagnoseResponse)
-async def get_diagnose(process_id: str, current_user: CurrentUserDep) -> DiagnoseResponse:
-    return DiagnoseResponse(process_id=process_id, content=None)
+# ---- Findings --------------------------------------------------------------
 
 
-@router.put("/{process_id}/diagnose", response_model=DiagnoseResponse)
-async def upsert_diagnose(
-    process_id: str,
-    payload: DiagnoseUpsertRequest,
+@router.get("/{process_id}/findings", response_model=FindingsResponse)
+async def get_findings(
+    process_id: UUID,
     current_user: CurrentUserDep,
-) -> DiagnoseResponse:
-    return DiagnoseResponse(process_id=process_id, content=payload.content)
+    repo: ProcessRepositoryDep,
+) -> FindingsResponse:
+    finding = await repo.get_finding(process_id)
+    if finding is None:
+        return FindingsResponse(
+            process_id=str(process_id),
+            answers={},
+            free_text="",
+            updated_at="",
+        )
+    return FindingsResponse(
+        process_id=str(process_id),
+        answers=finding.answers,
+        free_text=finding.free_text,
+        updated_at=finding.updated_at.isoformat(),
+    )
 
 
-@router.get("/{process_id}/documents", response_model=SubResourceStubResponse)
-async def list_documents(process_id: str, current_user: CurrentUserDep) -> SubResourceStubResponse:
-    return SubResourceStubResponse(process_id=process_id, message="En desarrollo")
+@router.put("/{process_id}/findings", response_model=FindingsResponse)
+async def upsert_findings(
+    process_id: UUID,
+    payload: UpsertFindingsRequest,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> FindingsResponse:
+    process = await repo.get_process(process_id)
+    if process is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    finding = Finding(
+        process_id=process_id,
+        answers=payload.answers,
+        free_text=payload.free_text,
+    )
+    saved = await repo.upsert_finding(finding)
+    return FindingsResponse(
+        process_id=str(process_id),
+        answers=saved.answers,
+        free_text=saved.free_text,
+        updated_at=saved.updated_at.isoformat(),
+    )
 
 
-@router.get("/{process_id}/audits", response_model=SubResourceStubResponse)
-async def list_audits(process_id: str, current_user: CurrentUserDep) -> SubResourceStubResponse:
-    return SubResourceStubResponse(process_id=process_id, message="En desarrollo")
+# ---- Plan ------------------------------------------------------------------
 
 
-@router.get("/{process_id}/indicators", response_model=SubResourceStubResponse)
-async def list_indicators(process_id: str, current_user: CurrentUserDep) -> SubResourceStubResponse:
-    return SubResourceStubResponse(process_id=process_id, message="En desarrollo")
+@router.get("/{process_id}/plan", response_model=PlanResponse)
+async def get_plan(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> PlanResponse:
+    plan = await repo.get_plan(process_id)
+    if plan is None:
+        raise HTTPException(status_code=404, detail="Plan no encontrado")
+    return PlanResponse(
+        process_id=str(plan.process_id),
+        summary_md=plan.summary_md,
+        generated_at=plan.generated_at.isoformat(),
+        tasks=[
+            TaskSchema(
+                id=str(t.id),
+                title=t.title,
+                description=t.description,
+                priority=t.priority.value,
+                estimated_effort=t.estimated_effort,
+                owner_role=t.owner_role,
+                sort_order=t.sort_order,
+            )
+            for t in plan.tasks
+        ],
+    )
+
+
+@router.post("/{process_id}/generate-plan", response_model=PlanResponse)
+async def generate_plan(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    llm: LLMDep,
+) -> PlanResponse:
+    process = await repo.get_process(process_id)
+    if process is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+
+    finding = await repo.get_finding(process_id)
+    if finding is None or not finding.answers:
+        raise HTTPException(
+            status_code=400,
+            detail="Debe completar el diagnóstico antes de generar el plan",
+        )
+
+    try:
+        raw_plan = await llm.generate_plan(
+            iso_standard=process.iso_standard.value,
+            findings={"answers": finding.answers, "free_text": finding.free_text},
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Error al generar el plan: {exc}",
+        ) from exc
+
+    plan = Plan(
+        id=raw_plan.id,
+        process_id=process_id,
+        summary_md=raw_plan.summary_md,
+        tasks=[
+            Task(
+                id=t.id,
+                plan_id=raw_plan.id,
+                title=t.title,
+                description=t.description,
+                priority=t.priority,
+                estimated_effort=t.estimated_effort,
+                owner_role=t.owner_role,
+                sort_order=t.sort_order,
+            )
+            for t in raw_plan.tasks
+        ],
+    )
+
+    saved = await repo.replace_plan(plan)
+    await repo.update_process_status(process_id, ProcessStatus.PLAN_READY)
+
+    return PlanResponse(
+        process_id=str(saved.process_id),
+        summary_md=saved.summary_md,
+        generated_at=saved.generated_at.isoformat(),
+        tasks=[
+            TaskSchema(
+                id=str(t.id),
+                title=t.title,
+                description=t.description,
+                priority=t.priority.value,
+                estimated_effort=t.estimated_effort,
+                owner_role=t.owner_role,
+                sort_order=t.sort_order,
+            )
+            for t in saved.tasks
+        ],
+    )

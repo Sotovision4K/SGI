@@ -1,0 +1,79 @@
+{
+  "iso_standard": "iso14001",
+  "title": "Diagnóstico ISO 14001:2015",
+  "description": "Sistema de Gestión Ambiental",
+  "groups": [
+    {
+      "id": "contexto",
+      "title": "Contexto de la organización",
+      "clauses": ["4.1", "4.2"],
+      "questions": [
+        { "id": "q_company_size", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "options": ["1-10", "11-50", "51-200", "201-500", "500+"], "required": true },
+        { "id": "q_industry", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: Manufactura, Energía, Minería, Servicios" },
+        { "id": "q_location", "type": "text", "label": "¿En qué zona geográfica opera (urbana, industrial, rural)?", "required": true },
+        { "id": "q_stakeholders", "type": "textarea", "label": "¿Quiénes son las partes interesadas clave en temas ambientales (comunidades, reguladores, clientes)?", "required": false }
+      ]
+    },
+    {
+      "id": "liderazgo",
+      "title": "Liderazgo",
+      "clauses": ["5.1", "5.2", "5.3"],
+      "questions": [
+        { "id": "q_leadership_commitment", "type": "select", "label": "¿La dirección demuestra compromiso activo con la gestión ambiental?", "options": ["Sí, totalmente", "Parcialmente", "Poco", "No"], "required": true },
+        { "id": "q_environmental_policy", "type": "select", "label": "¿Existe una política ambiental documentada y comunicada?", "options": ["Sí, documentada y comunicada", "Documentada pero no comunicada", "Informal", "No existe"], "required": true },
+        { "id": "q_roles_responsibilities", "type": "select", "label": "¿Están definidos los roles y responsabilidades ambientales?", "options": ["Sí, claramente", "Parcialmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "planificacion",
+      "title": "Planificación",
+      "clauses": ["6.1.1", "6.1.2", "6.1.3", "6.1.4", "6.2"],
+      "questions": [
+        { "id": "q_aspects_identified", "type": "select", "label": "¿Se han identificado y evaluado los aspectos e impactos ambientales?", "options": ["Sí, sistemáticamente", "Parcialmente", "No"], "required": true },
+        { "id": "q_compliance_obligations", "type": "select", "label": "¿Se identifican y evalúan los requisitos legales ambientales aplicables?", "options": ["Sí, con seguimiento periódico", "Conocidos pero no monitoreados", "No"], "required": true },
+        { "id": "q_environmental_objectives", "type": "select", "label": "¿Existen objetivos ambientales medibles?", "options": ["Sí, con indicadores", "Parcialmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "apoyo",
+      "title": "Apoyo",
+      "clauses": ["7.1", "7.2", "7.3", "7.4", "7.5"],
+      "questions": [
+        { "id": "q_resources", "type": "select", "label": "¿Se destinan recursos específicos a la gestión ambiental?", "options": ["Sí, asignados formalmente", "Compartidos sin presupuesto", "No"], "required": true },
+        { "id": "q_competence_awareness", "type": "select", "label": "¿Se capacita al personal en temas ambientales?", "options": ["Sí, con plan de formación", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_internal_external_communication", "type": "select", "label": "¿Cómo se gestiona la comunicación ambiental interna y externa?", "options": ["Plan definida", "Reactiva", "No se gestiona"], "required": true },
+        { "id": "q_documented_info", "type": "select", "label": "¿Cómo se gestionan los registros y documentos ambientales?", "options": ["Sistema digital", "Carpetas y papel", "Mixto"], "required": true }
+      ]
+    },
+    {
+      "id": "operacion",
+      "title": "Operación",
+      "clauses": ["8.1", "8.2"],
+      "questions": [
+        { "id": "q_operational_controls", "type": "textarea", "label": "¿Qué controles operacionales ambientales tiene implementados (manejo de residuos, emisiones, consumo de agua/energía)?", "required": true, "placeholder": "Describa los controles principales" },
+        { "id": "q_emergency_response", "type": "select", "label": "¿Existen procedimientos para responder a emergencias ambientales (derrames, incendios)?", "options": ["Sí, documentados y probados", "Documentados sin probar", "Informales", "No"], "required": true },
+        { "id": "q_waste_management", "type": "select", "label": "¿Cómo se gestionan los residuos (peligrosos y no peligrosos)?", "options": ["Gestión integral con proveedores autorizados", "Separación básica", "Mezclados", "No se gestionan"], "required": true }
+      ]
+    },
+    {
+      "id": "evaluacion",
+      "title": "Evaluación del desempeño",
+      "clauses": ["9.1.1", "9.1.2", "9.2", "9.3"],
+      "questions": [
+        { "id": "q_monitoring", "type": "select", "label": "¿Se monitorean los indicadores ambientales (emisiones, consumo, residuos)?", "options": ["Sí, con KPIs", "Algunos", "No"], "required": true },
+        { "id": "q_compliance_evaluation", "type": "select", "label": "¿Se evalúa periódicamente el cumplimiento legal ambiental?", "options": ["Sí, formalmente", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_internal_audits", "type": "select", "label": "¿Se realizan auditorías internas ambientales?", "options": ["Sí, programadas", "Ocasionalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "mejora",
+      "title": "Mejora",
+      "clauses": ["10.1", "10.2"],
+      "questions": [
+        { "id": "q_continuous_improvement", "type": "select", "label": "¿Existen iniciativas de mejora ambiental documentadas?", "options": ["Sí, sistemáticas", "Aisladas", "No"], "required": true },
+        { "id": "q_corrective_actions", "type": "select", "label": "¿Se gestionan acciones correctivas ante no conformidades ambientales?", "options": ["Sí, con seguimiento", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_main_environmental_challenges", "type": "textarea", "label": "¿Cuáles son los 3 principales desafíos ambientales que enfrenta la empresa?", "required": true, "placeholder": "Describa brevemente" }
+      ]
+    }
+  ]
+}

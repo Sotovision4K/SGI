@@ -1,0 +1,45 @@
+{
+  "name": "emit_action_plan",
+  "description": "Emite el plan de acción detallado para alcanzar la certificación ISO. Debe llamarse exactamente una vez con el plan completo.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "summary_md": {
+        "type": "string",
+        "description": "Resumen ejecutivo en markdown (3-5 párrafos) describiendo el estado actual, hallazgos principales y estrategia recomendada para lograr la certificación."
+      },
+      "tasks": {
+        "type": "array",
+        "description": "Lista estructurada de tareas del plan de acción (8-20 tareas).",
+        "items": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string",
+              "description": "Título corto y accionable de la tarea (máx. 100 caracteres)."
+            },
+            "description": {
+              "type": "string",
+              "description": "Descripción detallada de qué hacer (2-4 oraciones)."
+            },
+            "priority": {
+              "type": "string",
+              "enum": ["low", "medium", "high"],
+              "description": "Prioridad de la tarea basada en criticidad para la certificación."
+            },
+            "estimated_effort": {
+              "type": "string",
+              "description": "Estimación de esfuerzo (ej: '1 semana', '2-3 semanas', '1 mes')."
+            },
+            "owner_role": {
+              "type": "string",
+              "description": "Rol responsable sugerido (ej: 'Gerente de Calidad', 'Director General')."
+            }
+          },
+          "required": ["title", "description", "priority", "estimated_effort", "owner_role"]
+        }
+      }
+    },
+    "required": ["summary_md", "tasks"]
+  }
+}

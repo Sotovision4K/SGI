@@ -1,0 +1,79 @@
+{
+  "iso_standard": "iso45001",
+  "title": "Diagnóstico ISO 45001:2018",
+  "description": "Sistema de Gestión de Seguridad y Salud en el Trabajo",
+  "groups": [
+    {
+      "id": "contexto",
+      "title": "Contexto de la organización",
+      "clauses": ["4.1", "4.2"],
+      "questions": [
+        { "id": "q_company_size", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "options": ["1-10", "11-50", "51-200", "201-500", "500+"], "required": true },
+        { "id": "q_industry", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: Construcción, Manufactura, Minería, Servicios" },
+        { "id": "q_high_risk_activities", "type": "select", "label": "¿La empresa realiza actividades de alto riesgo (trabajo en altura, espacios confinados, maquinaria pesada, químicos)?", "options": ["Sí, varias", "Algunas", "No"], "required": true },
+        { "id": "q_workers_involved", "type": "select", "label": "¿Incluye contratistas y subcontratistas en su gestión de SST?", "options": ["Sí, plenamente", "Parcialmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "liderazgo",
+      "title": "Liderazgo y participación de los trabajadores",
+      "clauses": ["5.1", "5.2", "5.3", "5.4"],
+      "questions": [
+        { "id": "q_leadership_commitment", "type": "select", "label": "¿La dirección demuestra compromiso activo con la SST?", "options": ["Sí, totalmente", "Parcialmente", "Poco", "No"], "required": true },
+        { "id": "q_sst_policy", "type": "select", "label": "¿Existe una política de SST documentada y comunicada?", "options": ["Sí, documentada y comunicada", "Documentada pero no comunicada", "Informal", "No existe"], "required": true },
+        { "id": "q_worker_consultation", "type": "select", "label": "¿Se consultan y participan los trabajadores en temas de SST?", "options": ["Sí, con mecanismos formales (comité, buzón)", "Ocasionalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "planificacion",
+      "title": "Planificación",
+      "clauses": ["6.1.1", "6.1.2", "6.1.3", "6.2", "6.3"],
+      "questions": [
+        { "id": "q_hazards_identified", "type": "select", "label": "¿Se han identificado y evaluado los peligros y riesgos para la SST?", "options": ["Sí, sistemáticamente", "Parcialmente", "No"], "required": true },
+        { "id": "q_legal_requirements", "type": "select", "label": "¿Se identifican y evalúan los requisitos legales de SST aplicables?", "options": ["Sí, con seguimiento", "Conocidos pero no monitoreados", "No"], "required": true },
+        { "id": "q_sst_objectives", "type": "select", "label": "¿Existen objetivos de SST medibles?", "options": ["Sí, con indicadores claros", "Parcialmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "apoyo",
+      "title": "Apoyo",
+      "clauses": ["7.1", "7.2", "7.3", "7.4", "7.5"],
+      "questions": [
+        { "id": "q_resources", "type": "select", "label": "¿Se destinan recursos suficientes a la gestión de SST?", "options": ["Sí, asignados formalmente", "Limitados", "No"], "required": true },
+        { "id": "q_competence_training", "type": "select", "label": "¿Se capacita al personal en SST?", "options": ["Sí, con plan de formación", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_communication", "type": "select", "label": "¿Cómo se gestiona la comunicación de SST (interna y externa)?", "options": ["Plan definida", "Reactiva", "No se gestiona"], "required": true },
+        { "id": "q_documented_info", "type": "select", "label": "¿Cómo se gestionan los registros y documentos de SST?", "options": ["Sistema digital", "Carpetas y papel", "Mixto"], "required": true }
+      ]
+    },
+    {
+      "id": "operacion",
+      "title": "Operación",
+      "clauses": ["8.1.1", "8.1.2", "8.1.3", "8.1.4", "8.2"],
+      "questions": [
+        { "id": "q_operational_controls", "type": "textarea", "label": "¿Qué controles operacionales de SST tiene implementados (EPP, procedimientos de trabajo seguro, permisos de trabajo)?", "required": true, "placeholder": "Describa los controles principales" },
+        { "id": "q_emergency_response", "type": "select", "label": "¿Existen procedimientos para responder a emergencias (accidentes, incendios, evacuaciones)?", "options": ["Sí, documentados y simulados", "Documentados sin probar", "Informales", "No"], "required": true },
+        { "id": "q_incident_investigation", "type": "select", "label": "¿Se investigan los incidentes y accidentes laborales?", "options": ["Sí, con metodología formal", "Ocasionalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "evaluacion",
+      "title": "Evaluación del desempeño",
+      "clauses": ["9.1.1", "9.1.2", "9.2", "9.3"],
+      "questions": [
+        { "id": "q_monitoring", "type": "select", "label": "¿Se monitorean los indicadores de SST (accidentalidad, ausentismo, capacitaciones)?", "options": ["Sí, con KPIs", "Algunos", "No"], "required": true },
+        { "id": "q_compliance_evaluation", "type": "select", "label": "¿Se evalúa periódicamente el cumplimiento legal en SST?", "options": ["Sí, formalmente", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_internal_audits", "type": "select", "label": "¿Se realizan auditorías internas de SST?", "options": ["Sí, programadas", "Ocasionalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "mejora",
+      "title": "Mejora",
+      "clauses": ["10.1", "10.2"],
+      "questions": [
+        { "id": "q_continuous_improvement", "type": "select", "label": "¿Existen iniciativas formales de mejora continua en SST?", "options": ["Sí, sistemáticas", "Aisladas", "No"], "required": true },
+        { "id": "q_corrective_actions", "type": "select", "label": "¿Se gestionan acciones correctivas ante incidentes y no conformidades?", "options": ["Sí, con seguimiento", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_main_safety_challenges", "type": "textarea", "label": "¿Cuáles son los 3 principales riesgos o desafíos de seguridad que enfrenta la empresa?", "required": true, "placeholder": "Describa brevemente" }
+      ]
+    }
+  ]
+}

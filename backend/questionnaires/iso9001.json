@@ -1,0 +1,82 @@
+{
+  "iso_standard": "iso9001",
+  "title": "Diagnóstico ISO 9001:2015",
+  "description": "Sistema de Gestión de la Calidad",
+  "groups": [
+    {
+      "id": "contexto",
+      "title": "Contexto de la organización",
+      "clauses": ["4.1", "4.2"],
+      "questions": [
+        { "id": "q_company_size", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "options": ["1-10", "11-50", "51-200", "201-500", "500+"], "required": true },
+        { "id": "q_industry", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: Manufactura, Servicios financieros, Tecnología" },
+        { "id": "q_main_processes", "type": "textarea", "label": "¿Cuáles son los principales procesos del negocio?", "required": true, "placeholder": "Describa brevemente los 3-5 procesos clave" },
+        { "id": "q_stakeholders", "type": "textarea", "label": "¿Quiénes son las partes interesadas clave (clientes, proveedores, empleados, reguladores)?", "required": false }
+      ]
+    },
+    {
+      "id": "liderazgo",
+      "title": "Liderazgo",
+      "clauses": ["5.1", "5.2", "5.3"],
+      "questions": [
+        { "id": "q_leadership_commitment", "type": "select", "label": "¿La dirección demuestra compromiso activo con la calidad?", "options": ["Sí, totalmente", "Parcialmente", "Poco", "No"], "required": true },
+        { "id": "q_quality_policy", "type": "select", "label": "¿Existe una política de calidad documentada y comunicada?", "options": ["Sí, documentada y comunicada", "Documentada pero no comunicada", "Informal", "No existe"], "required": true },
+        { "id": "q_roles_responsibilities", "type": "select", "label": "¿Están definidos y comunicados los roles y responsabilidades?", "options": ["Sí, claramente", "Parcialmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "planificacion",
+      "title": "Planificación",
+      "clauses": ["6.1", "6.2", "6.3"],
+      "questions": [
+        { "id": "q_risks_identified", "type": "select", "label": "¿Se han identificado y evaluado los riesgos y oportunidades?", "options": ["Sí, sistemáticamente", "Parcialmente", "No"], "required": true },
+        { "id": "q_quality_objectives", "type": "select", "label": "¿Existen objetivos de calidad medibles?", "options": ["Sí, con indicadores claros", "Sí, pero poco medibles", "No existen"], "required": true },
+        { "id": "q_change_management", "type": "select", "label": "¿Se gestionan los cambios de manera planificada?", "options": ["Sí, con un proceso formal", "Informalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "apoyo",
+      "title": "Apoyo",
+      "clauses": ["7.1", "7.2", "7.3", "7.4", "7.5"],
+      "questions": [
+        { "id": "q_resources", "type": "select", "label": "¿Se determinan y proporcionan los recursos necesarios?", "options": ["Sí, planificadamente", "Reactivamente", "No"], "required": true },
+        { "id": "q_competence", "type": "select", "label": "¿Se evalúa la competencia del personal y se capacita?", "options": ["Sí, con plan de formación", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_communication", "type": "select", "label": "¿Existe una estrategia de comunicación interna y externa?", "options": ["Sí, definida", "Básica", "No"], "required": true },
+        { "id": "q_documented_info", "type": "select", "label": "¿Cómo se gestiona la información documentada (procedimientos, manuales, registros)?", "options": ["Sistema digital robusto", "Carpetas compartidas", "Papel", "Mixto"], "required": true }
+      ]
+    },
+    {
+      "id": "operacion",
+      "title": "Operación",
+      "clauses": ["8.1", "8.2", "8.3", "8.4", "8.5"],
+      "questions": [
+        { "id": "q_operational_planning", "type": "select", "label": "¿Existe planificación operacional documentada?", "options": ["Sí, completa", "Parcial", "No"], "required": true },
+        { "id": "q_customer_requirements", "type": "textarea", "label": "¿Cómo se determinan y revisan los requisitos del cliente?", "required": true, "placeholder": "Describa el proceso de revisión de requisitos" },
+        { "id": "q_design_control", "type": "select", "label": "¿Se controlan los procesos de diseño y desarrollo?", "options": ["Sí, formalmente", "Informalmente", "No aplica", "No"], "required": true },
+        { "id": "q_supplier_control", "type": "select", "label": "¿Se evalúan y controlan los proveedores externos?", "options": ["Sí, con criterios y seguimiento", "Básicamente", "No"], "required": true },
+        { "id": "q_production_control", "type": "select", "label": "¿La producción o prestación del servicio se controla de forma planificada?", "options": ["Sí, con controles definidos", "Parcialmente", "No"], "required": true },
+        { "id": "q_nonconforming_outputs", "type": "select", "label": "¿Se identifican y controlan las salidas no conformes?", "options": ["Sí, con proceso formal", "Informalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "evaluacion",
+      "title": "Evaluación del desempeño",
+      "clauses": ["9.1", "9.2", "9.3"],
+      "questions": [
+        { "id": "q_monitoring", "type": "select", "label": "¿Se monitorean y miden los procesos y el producto?", "options": ["Sí, con KPIs", "Parcialmente", "No"], "required": true },
+        { "id": "q_internal_audits", "type": "select", "label": "¿Se realizan auditorías internas periódicas?", "options": ["Sí, programadas", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_management_review", "type": "select", "label": "¿La dirección realiza revisiones por la dirección documentadas?", "options": ["Sí, periódicas", "Ocasionalmente", "No"], "required": true }
+      ]
+    },
+    {
+      "id": "mejora",
+      "title": "Mejora",
+      "clauses": ["10.1", "10.2", "10.3"],
+      "questions": [
+        { "id": "q_continuous_improvement", "type": "select", "label": "¿Existen iniciativas formales de mejora continua?", "options": ["Sí, sistemáticas", "Aisladas", "No"], "required": true },
+        { "id": "q_corrective_actions", "type": "select", "label": "¿Se gestionan acciones correctivas ante no conformidades?", "options": ["Sí, con seguimiento", "Ocasionalmente", "No"], "required": true },
+        { "id": "q_main_pain_points", "type": "textarea", "label": "¿Cuáles son las 3 principales quejas o problemas que enfrenta actualmente?", "required": true, "placeholder": "Describa brevemente" }
+      ]
+    }
+  ]
+}
