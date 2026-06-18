@@ -66,13 +66,22 @@ export const ProcessDetailPage = () => {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <div className="flex items-center gap-4 mb-2">
-            <h1 className="text-3xl font-bold text-primary">{process.companyName}</h1>
+            <h1 className="text-3xl font-bold text-primary">
+              {process.company_name || '(sin empresa)'}
+            </h1>
             <span className="px-3 py-1 bg-accent-light text-accent text-sm font-medium rounded-full">
-              {process.isoStandard}
+              {process.iso_standard}
             </span>
           </div>
           <p className="text-text-muted">
-            Proceso de certificación {process.status === 'in_progress' ? 'en progreso' : process.status === 'draft' ? 'en borrador' : 'completado'}
+            Proceso de certificación{' '}
+            {process.status === 'in_diagnosis'
+              ? 'en diagnóstico'
+              : process.status === 'plan_ready'
+                ? 'con plan listo'
+                : process.status === 'in_progress'
+                  ? 'en progreso'
+                  : 'completado'}
           </p>
         </div>
 

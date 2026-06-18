@@ -2,18 +2,18 @@ import { apiRequest } from '../lib/api-client';
 
 export interface Process {
   id: string;
-  companyId: string;
-  companyName: string;
-  isoStandard: string;
-  status: 'draft' | 'in_progress' | 'completed';
-  createdAt: string;
-  updatedAt: string;
+  consultant_id: string;
+  company_id: string;
+  company_name: string | null;
+  iso_standard: 'iso9001' | 'iso14001' | 'iso45001';
+  status: 'in_diagnosis' | 'plan_ready' | 'in_progress' | 'completed';
+  created_at: string;
+  updated_at: string;
 }
 
 export interface CreateProcessInput {
-  companyId: string;
-  companyName: string;
-  isoStandard: string;
+  company_id: string;
+  iso_standard: 'iso9001' | 'iso14001' | 'iso45001';
 }
 
 export interface ApiCallOptions {
@@ -26,7 +26,8 @@ function isApiError(err: unknown): err is { status: number } {
 }
 
 export async function getProcesses({ token, signal }: ApiCallOptions): Promise<Process[]> {
-  return apiRequest<Process[]>('/processes', { token, signal });
+  const data = await apiRequest<{ items: Process[]; total: number }>('/processes', { token, signal });
+  return data.items;
 }
 
 export async function getProcess(
