@@ -1,0 +1,5 @@
+aws_region        = "us-east-1"
+environment       = "dev"
+project_name      = "cert-app"
+frontend_origin   = "https://d1234567890.cloudfront.net"
+github_repository = "your-username/cert-app"
