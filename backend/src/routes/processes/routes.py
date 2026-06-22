@@ -157,6 +157,8 @@ async def list_processes(
     consultant_id = UUID(sub) if sub else None
     processes = await repo.list_processes(consultant_id=consultant_id)
     items: list[ProcessListItem] = []
+
+    
     for p in processes:
         name = await _hydrate_company_name(p.company_id, settings)
         items.append(_process_to_item(p, name))

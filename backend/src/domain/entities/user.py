@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class UserRole(str, Enum):
@@ -20,8 +20,7 @@ class User(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     is_active: bool = True
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Company(BaseModel):
@@ -31,8 +30,7 @@ class Company(BaseModel):
     is_active: bool = True
     name: str | None = Field(default=None, max_length=200)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class Consultant(BaseModel):
@@ -41,5 +39,4 @@ class Consultant(BaseModel):
     years_experience: int = 0
     certifications: str = Field(max_length=200, default="")
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

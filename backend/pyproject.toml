@@ -36,3 +36,7 @@ dev-dependencies = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+filterwarnings = [
+    # Starlette deprecation warning about httpx testclient (upstream, not our code)
+    "ignore::starlette.exceptions.StarletteDeprecationWarning",
+]

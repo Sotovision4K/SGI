@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Finding(BaseModel):
@@ -12,5 +12,4 @@ class Finding(BaseModel):
     free_text: str = ""
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
