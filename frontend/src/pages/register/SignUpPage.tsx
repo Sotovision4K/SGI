@@ -83,7 +83,7 @@ const onSubmit = async (data: SignUpFormData) => {
       const response = await signUp(data.email, data.password, {
         name: data.firstName + ' ' + data.lastName,
         phone_number: data.phone,
-        'custom:govId': data.govId,
+        'custom:gov_id': data.govId,
         'custom:role': data.role,
       });
 

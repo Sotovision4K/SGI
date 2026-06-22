@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getProcesses, createProcess, deleteProcess, type CreateProcessInput } from '../api/process';
 import { useApiAuthBridge } from '../lib/use-api-auth';
+import { toast } from '../components/ui/toast';
+import { getErrorMessage } from '../lib/error-utils';
 
 export function useProcesses() {
   const { getToken } = useApiAuthBridge();
@@ -19,6 +21,9 @@ export function useCreateProcess() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
     },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
+    },
   });
 }
 
@@ -29,6 +34,9 @@ export function useDeleteProcess() {
     mutationFn: (processId: string) => deleteProcess(processId, { token: getToken() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
+    },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
     },
   });
 }

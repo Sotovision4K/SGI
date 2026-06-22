@@ -26,6 +26,7 @@
     "oidc-client-ts": "^3.5.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
+    "react-error-boundary": "^6.1.2",
     "react-hook-form": "^7.76.1",
     "react-markdown": "^10.1.0",
     "react-oidc-context": "^3.3.1",

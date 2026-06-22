@@ -14,7 +14,7 @@
 - On the api, all should be authenticated, so pass the require token
 - We need now, role base information. This is where we are going to distinct if is a consultor or a company
 - The role is going to be sent as a custom attribute custom:role
-- modify the current custom:nit for custom:govId
+- modify the current custom:nit for custom:gov_id
 - the workflow for this is this :
 
 SIGNUP          CONFIRMAR EMAIL       LOGIN / SESIÓN

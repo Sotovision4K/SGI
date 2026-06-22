@@ -4,6 +4,8 @@ import { useAuth } from 'react-oidc-context';
 import { Plus, Trash2, Building2, LogOut, FileText } from 'lucide-react';
 import { useProcesses, useDeleteProcess } from '../../hooks/useProcesses';
 import { StartProcessModal } from './StartProcessModal';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { getErrorMessage } from '../../lib/error-utils';
 import type { Process } from '../../api/process';
 
 const ISO_LABELS: Record<Process['iso_standard'], string> = {
@@ -22,7 +24,7 @@ const STATUS_LABELS: Record<Process['status'], { label: string; className: strin
 export const ProcessListPage = () => {
   const navigate = useNavigate();
   const { user, signoutRedirect } = useAuth();
-  const { data: processes, isLoading } = useProcesses();
+  const { data: processes, isLoading, isError, error, refetch } = useProcesses();
   const deleteProcess = useDeleteProcess();
   const [showStartModal, setShowStartModal] = useState(false);
 
@@ -94,6 +96,12 @@ export const ProcessListPage = () => {
           <div className="flex items-center justify-center py-12">
             <div className="text-text-muted">Cargando procesos...</div>
           </div>
+        ) : isError ? (
+          <ErrorState
+            title="No se pudieron cargar los procesos"
+            message={getErrorMessage(error)}
+            action={{ label: 'Reintentar', onClick: () => refetch() }}
+          />
         ) : processes && processes.length > 0 ? (
           <div className="grid gap-4">
             {processes.map((process) => {

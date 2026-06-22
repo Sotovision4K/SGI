@@ -14,6 +14,11 @@ export function SignInPage() {
     }
   }, [isAuthenticated, isLoading, navigate]);
 
+  // Log raw OIDC error for debugging — never expose to users
+  useEffect(() => {
+    if (error) console.error('[SignIn]', new Date().toISOString(), error.message);
+  }, [error]);
+
   const handleSignIn = () => {
     signinRedirect();
   };
@@ -86,7 +91,9 @@ export function SignInPage() {
           {error && (
             <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
               <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-600">{error}</p>
+              <p className="text-sm text-red-600">
+                Error de autenticación. Contacta al administrador si el problema persiste.
+              </p>
             </div>
           )}
 

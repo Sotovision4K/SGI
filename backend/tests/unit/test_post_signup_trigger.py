@@ -18,7 +18,7 @@ def _make_event(email: str = "test@example.com") -> dict:
                 "email": email,
                 "given_name": "Test",
                 "family_name": "User",
-                "custom:govId": "123",
+                "custom:gov_id": "123",
                 "custom:role": "customer",
             },
         },

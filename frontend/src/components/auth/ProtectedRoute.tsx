@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useAuth } from 'react-oidc-context';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApiAuthBridge } from '../../lib/use-api-auth';
+import { ErrorState } from '../ui/ErrorState';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -28,6 +29,16 @@ export function ProtectedRoute({ children }: ProtectedRouteProps) {
           <p className="text-text-muted">Verificando sesión...</p>
         </div>
       </div>
+    );
+  }
+
+  if (auth.error) {
+    return (
+      <ErrorState
+        title="Error de autenticación"
+        message="No se pudo verificar tu sesión. Contacta al administrador si el problema persiste."
+        action={{ label: 'Intentar de nuevo', onClick: () => auth.signinRedirect() }}
+      />
     );
   }
 

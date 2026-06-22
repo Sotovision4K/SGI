@@ -2,12 +2,14 @@ import { useParams, Link } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { FileText, ClipboardCheck, BarChart3, LogOut, ArrowLeft } from 'lucide-react';
 import { useProcess } from '../../hooks/useProcess';
+import { ErrorState } from '../../components/ui/ErrorState';
+import { getErrorMessage } from '../../lib/error-utils';
 
 export const ProcessDetailPage = () => {
   const { processId } = useParams();
   const { user, signoutRedirect } = useAuth();
 
-  const { data: process, isLoading } = useProcess(processId);
+  const { data: process, isLoading, isError, error, refetch } = useProcess(processId);
 
   const fullName = user?.profile?.name || user?.profile?.email || 'Usuario';
   const email = user?.profile?.email || '';
@@ -21,6 +23,16 @@ export const ProcessDetailPage = () => {
       <div className="min-h-screen bg-bg-soft flex items-center justify-center">
         <div className="text-text-muted">Cargando proceso...</div>
       </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <ErrorState
+        title="No se pudo cargar el proceso"
+        message={getErrorMessage(error)}
+        action={{ label: 'Reintentar', onClick: () => refetch() }}
+      />
     );
   }
 

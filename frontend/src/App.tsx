@@ -1,8 +1,11 @@
 import { Suspense, lazy } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ErrorBoundary } from 'react-error-boundary';
 import { CognitoAuthProvider } from './lib/auth-config';
 import { ProtectedRoute } from './components/auth/ProtectedRoute';
+import { ErrorFallback } from './components/ErrorFallback';
+import { ToastContainer } from './components/ui/toast';
 import { LandingPage } from './pages/LandingPage';
 
 const queryClient = new QueryClient();
@@ -29,65 +32,68 @@ function LoadingFallback() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <CognitoAuthProvider>
-        <Suspense fallback={<LoadingFallback />}>
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/auth/signin" element={<SignInPage />} />
-            <Route path="/auth/signup" element={<SignUpPage />} />
-            <Route path="/auth/logout" element={<LogoutPage />} />
-            <Route path="/confirm-email" element={<ConfirmEmailPage />} />
-            <Route
-              path="/processes"
-              element={
-                <ProtectedRoute>
-                  <ProcessListPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/processes/:processId"
-              element={
-                <ProtectedRoute>
-                  <ProcessDetailPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/processes/:processId/diagnose"
-              element={
-                <ProtectedRoute>
-                  <DiagnosePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/processes/:processId/documents"
-              element={
-                <ProtectedRoute>
-                  <DocumentsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/processes/:processId/audits"
-              element={
-                <ProtectedRoute>
-                  <AuditsPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/processes/:processId/indicators"
-              element={
-                <ProtectedRoute>
-                  <IndicatorsPage />
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </Suspense>
-      </CognitoAuthProvider>
+        <CognitoAuthProvider>
+          <ErrorBoundary FallbackComponent={ErrorFallback}>
+            <Suspense fallback={<LoadingFallback />}>
+              <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route path="/auth/signin" element={<SignInPage />} />
+                <Route path="/auth/signup" element={<SignUpPage />} />
+                <Route path="/auth/logout" element={<LogoutPage />} />
+                <Route path="/confirm-email" element={<ConfirmEmailPage />} />
+                <Route
+                  path="/processes"
+                  element={
+                    <ProtectedRoute>
+                      <ProcessListPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/processes/:processId"
+                  element={
+                    <ProtectedRoute>
+                      <ProcessDetailPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/processes/:processId/diagnose"
+                  element={
+                    <ProtectedRoute>
+                      <DiagnosePage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/processes/:processId/documents"
+                  element={
+                    <ProtectedRoute>
+                      <DocumentsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/processes/:processId/audits"
+                  element={
+                    <ProtectedRoute>
+                      <AuditsPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/processes/:processId/indicators"
+                  element={
+                    <ProtectedRoute>
+                      <IndicatorsPage />
+                    </ProtectedRoute>
+                  }
+                />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+          <ToastContainer />
+        </CognitoAuthProvider>
     </QueryClientProvider>
   );
 }

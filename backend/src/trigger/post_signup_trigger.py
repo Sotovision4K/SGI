@@ -30,7 +30,7 @@ def handler(event: dict, context: dict) -> dict:
             email = user_attributes.get("email")
             user_id = str(uuid.uuid4())
             full_name = f"{user_attributes.get('given_name', '')} {user_attributes.get('family_name', '')}".strip()
-            gov_id = user_attributes.get("custom:govId", "")
+            gov_id = user_attributes.get("custom:gov_id", "")
             role = user_attributes.get("custom:role", "customer")
 
             logger.info(f"Post sign-up trigger: Creating user {email} with role {role}")

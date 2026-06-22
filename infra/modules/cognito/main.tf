@@ -108,8 +108,8 @@ resource "aws_cognito_user_pool_client" "web" {
     refresh_token = "days"
   }
 
-  read_attributes  = ["email", "phone_number", "name"]
-  write_attributes = ["email", "phone_number", "name"]
+  read_attributes  = ["email", "phone_number", "name", "custom:role", "custom:gov_id"]
+  write_attributes = ["email", "phone_number", "name", "custom:role", "custom:gov_id"]
 }
 
 resource "aws_cognito_identity_pool" "main" {

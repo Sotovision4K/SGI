@@ -1,3 +1,5 @@
+import { getStatusMessage } from './error-utils';
+
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') ?? '';
 const API_VERSION = '/api/v1';
 
@@ -36,15 +38,20 @@ function buildUrl(path: string): string {
 async function parseError(response: Response): Promise<ApiError> {
   let detail: string | undefined;
   try {
-    const data = await response.json();
-    if (typeof data?.detail === 'string') {
-      detail = data.detail;
-    }
+    const body = await response.json();
+    detail = body.detail ?? body.message;
   } catch {
-    // ignore parse errors
+    // Response wasn't JSON — use status text
   }
-  const message = detail ?? `Error ${response.status}: ${response.statusText}`;
-  return new ApiError(response.status, message, detail);
+  // Log raw backend detail for debugging — never expose to users
+  if (detail) {
+    console.error('[ApiError]', new Date().toISOString(), response.status, detail);
+  }
+  return new ApiError(
+    response.status,
+    getStatusMessage(response.status),
+    detail
+  );
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -62,12 +69,20 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  const response = await fetch(buildUrl(path), {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    signal,
-  });
+  let response: Response;
+  try {
+    response = await fetch(buildUrl(path), {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new ApiError(0, 'No se pudo conectar con el servidor. Verifica tu conexión a internet.');
+    }
+    throw error;
+  }
 
   if (response.status === 401) {
     onUnauthorized?.(401);

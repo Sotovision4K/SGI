@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getFindings, saveFindings, generatePlan, type Findings, type Plan } from '../api/plan';
 import { useApiAuthBridge } from '../lib/use-api-auth';
+import { toast } from '../components/ui/toast';
+import { getErrorMessage } from '../lib/error-utils';
 
 export function useFindings(processId: string | null) {
   const { getToken } = useApiAuthBridge();
@@ -20,6 +22,9 @@ export function useSaveFindings(processId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['findings', processId] });
     },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
+    },
   });
 }
 
@@ -31,6 +36,9 @@ export function useGeneratePlan(processId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plan', processId] });
       queryClient.invalidateQueries({ queryKey: ['processes'] });
+    },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
     },
   });
 }
