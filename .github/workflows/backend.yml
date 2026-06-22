@@ -121,7 +121,7 @@ jobs:
 
           aws lambda update-function-configuration \
             --function-name cert-app-dev-api \
-            --environment "Variables=${UPDATED_ENV}"
+            --environment "$(echo "$UPDATED_ENV" | jq -c '{Variables: .}')"
 
       - name: Wait for Lambda update to propagate
         run: sleep 15

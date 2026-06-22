@@ -6,8 +6,7 @@ Tests:
 - lifespan calls SQLModel.metadata.create_all on startup
 - lifespan pings DB on startup
 """
-import os
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -77,7 +76,6 @@ def test_lifespan_calls_create_all(monkeypatch):
     get_settings.cache_clear()
 
     import asyncio
-    import re
 
     # Collect run_sync calls so we can inspect the lambdas
     run_sync_calls = []

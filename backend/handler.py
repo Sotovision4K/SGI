@@ -6,7 +6,7 @@ VENV_SITE_PACKAGES = os.path.join(CURRENT_DIR, ".venv", "lib", "python3.12", "si
 if os.path.isdir(VENV_SITE_PACKAGES):
     sys.path.insert(0, VENV_SITE_PACKAGES)
 
-from mangum import Mangum
-from src.main import app
+from mangum import Mangum  # noqa: E402
+from src.main import app  # noqa: E402
 
 handler = Mangum(app)
