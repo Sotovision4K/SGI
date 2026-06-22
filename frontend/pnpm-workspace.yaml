@@ -1,6 +1,10 @@
-packages:
+ppackages:
   - "."
 
+catalog:
+  react: "^19.2.6"
+  react-dom: "^19.2.6"
+
 overrides:
-  react: $react
-  react-dom: $react-dom
+  react: "catalog:"
+  react-dom: "catalog:"
