@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from 'react-oidc-context';
 import { Navbar } from './Navbar';
 import { Hero } from './Hero';
 import { Features } from './Features';
@@ -11,6 +13,14 @@ import { RoleModal } from './RoleModal';
 
 export function LandingPage() {
   const [modalOpen, setModalOpen] = useState(false);
+  const { isAuthenticated, isLoading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (isAuthenticated && !isLoading) {
+      navigate('/processes', { replace: true });
+    }
+  }, [isAuthenticated, isLoading, navigate]);
 
   return (
     <>
