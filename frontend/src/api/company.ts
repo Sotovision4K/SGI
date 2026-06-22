@@ -19,7 +19,9 @@ export interface ApiCallOptions {
 }
 
 export async function listCompanies({ token, signal }: ApiCallOptions): Promise<Company[]> {
+
   const data = await apiRequest<{ items: Company[]; total: number }>('/companies', { token, signal });
+  
   return data.items;
 }
 
