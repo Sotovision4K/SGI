@@ -90,13 +90,13 @@ jobs:
           aws-region: us-east-1
 
       - name: Upload to S3
-        run: aws s3 cp .packaged/function.zip s3://cert-app-dev-backend/lambdas/function.zip
+        run: aws s3 cp .packaged/function.zip s3://cert-app-dev-frontend/lambdas/function.zip
 
       - name: Update Lambda function code
         run: |
           aws lambda update-function-code \
             --function-name cert-app-dev-api \
-            --s3-bucket cert-app-dev-backend \
+            --s3-bucket cert-app-dev-frontend \
             --s3-key lambdas/function.zip
 
       - name: Update ANTHROPIC_API_KEY env var
