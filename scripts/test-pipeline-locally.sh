@@ -105,6 +105,28 @@ if aws sts get-caller-identity &>/dev/null; then
     --s3-bucket cert-app-dev-frontend \
     --s3-key lambdas/function.zip
 
+  echo "  Waiting for code update to finish..."
+  aws lambda wait function-updated --function-name cert-app-dev-api
+
+  echo "  Updating ANTHROPIC_API_KEY env var..."
+  ANTHROPIC_KEY="${ANTHROPIC_API_KEY:-}"
+  if [ -z "$ANTHROPIC_KEY" ]; then
+    echo "  ANTHROPIC_API_KEY not set, skipping env var update"
+  else
+    CURRENT_ENV=$(aws lambda get-function-configuration \
+      --function-name cert-app-dev-api \
+      --query 'Environment.Variables' \
+      --output json 2>/dev/null || echo "{}")
+    if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
+      CURRENT_ENV="{}"
+    fi
+    UPDATED_ENV=$(echo "$CURRENT_ENV" | jq --arg key "$ANTHROPIC_KEY" '. + {ANTHROPIC_API_KEY: $key}')
+    aws lambda update-function-configuration \
+      --function-name cert-app-dev-api \
+      --environment "$(echo "$UPDATED_ENV" | jq -c '{Variables: .}')"
+    echo "  ANTHROPIC_API_KEY updated"
+  fi
+
   echo ""
   echo "  Waiting 15s for Lambda update to propagate..."
   sleep 15

@@ -99,6 +99,9 @@ jobs:
             --s3-bucket cert-app-dev-frontend \
             --s3-key lambdas/function.zip
 
+      - name: Wait for code update to finish
+        run: aws lambda wait function-updated --function-name cert-app-dev-api
+
       - name: Update ANTHROPIC_API_KEY env var
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
