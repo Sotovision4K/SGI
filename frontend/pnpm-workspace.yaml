@@ -1,4 +1,4 @@
-ppackages:
+packages:
   - "."
 
 catalog:
