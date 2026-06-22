@@ -1,4 +1,4 @@
-gifrom typing import Annotated, Any
+from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException

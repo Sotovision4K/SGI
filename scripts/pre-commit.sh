@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pre-commit hook for cert_app
-# Runs the project's linters/typecheckers on staged files.
+# Runs secret scanning + the project's linters/typecheckers on staged files.
 # Skips a check gracefully (with a notice) if the required toolchain is missing.
 #
 # Install:    make install-hooks
@@ -22,17 +22,60 @@ ok()   { printf "${GREEN}✓${NC} %s\n" "$1"; }
 warn() { printf "${YELLOW}!${NC} %s\n" "$1"; }
 fail() { printf "${RED}✗${NC} %s\n" "$1"; }
 
+FAILED=0
+
+# --- Secret scanning ----------------------------------------------------------
+# Blocks commits that contain common secret patterns.
+# This is a first-line defense — GitHub's push protection is the second.
+
+step "Secret scanning"
+
+STAGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+# Patterns that indicate hardcoded secrets
+SECRET_PATTERNS=(
+    'sk-ant-api03-[A-Za-z0-9_-]\{20,\}'   # Anthropic API key
+    'AKIA[0-9A-Z]\{16\}'                   # AWS Access Key ID
+    'aws_secret_access_key\s*=\s*["\047][A-Za-z0-9/+=]\{40\}["\047]'  # AWS Secret Key
+    'ghp_[A-Za-z0-9]\{36\}'               # GitHub PAT
+    'gho_[A-Za-z0-9]\{36\}'               # GitHub OAuth token
+    'sk-[A-Za-z0-9]\{20,\}'               # OpenAI / generic API key (sk-...)
+    'xox[baprs]-[A-Za-z0-9-]\{10,\}'      # Slack token
+    'AIza[0-9A-Za-z_-]\{35\}'             # Google API key
+    '-----BEGIN [A-Z ]*PRIVATE KEY-----'  # Private key block
+)
+
+SECRETS_FOUND=0
+for file in $STAGED_FILES; do
+    if [ ! -f "$file" ]; then
+        continue
+    fi
+    for pattern in "${SECRET_PATTERNS[@]}"; do
+        MATCH=$(git show ":$file" | grep -nE "$pattern" 2>/dev/null || true)
+        if [ -n "$MATCH" ]; then
+            fail "Potential secret found in $file:"
+            echo "  $MATCH"
+            SECRETS_FOUND=1
+        fi
+    done
+done
+
+if [ "$SECRETS_FOUND" -ne 0 ]; then
+    fail "Secrets detected. Remove them before committing."
+    fail "If this is a false positive, bypass with: git commit --no-verify"
+    exit 1
+fi
+ok "No secrets detected in staged files."
+
 # --- Gather staged files -----------------------------------------------------
 
 STAGED_FRONTEND=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^frontend/' || true)
 STAGED_BACKEND=$(git diff --cached --name-only --diff-filter=ACMR | grep -E '^backend/' || true)
 
 if [ -z "$STAGED_FRONTEND$STAGED_BACKEND" ]; then
-  ok "No frontend or backend files staged — skipping pre-commit checks."
-  exit 0
+    ok "No frontend or backend files staged — skipping lint checks."
+    exit 0
 fi
-
-FAILED=0
 
 # --- Frontend: lint + typecheck ---------------------------------------------
 
@@ -66,7 +109,7 @@ if [ -n "$STAGED_BACKEND" ]; then
     warn "Run tests via 'cd backend && docker compose run --rm api uv run pytest' or install uv: https://docs.astral.sh/uv/"
   else
     step "Backend: uv run ruff check ."
-    if (cd backend && uv run ruff check .); then
+    if (cd backend && uv run --no-sync ruff check .); then
       ok "Backend ruff passed."
     else
       fail "Backend ruff failed."
@@ -74,7 +117,7 @@ if [ -n "$STAGED_BACKEND" ]; then
     fi
 
     step "Backend: uv run pytest"
-    if (cd backend && uv run pytest); then
+    if (cd backend && uv run --no-sync pytest); then
       ok "Backend tests passed."
     else
       fail "Backend tests failed."
