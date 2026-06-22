@@ -1,7 +1,7 @@
-from typing import Annotated, Any
+gifrom typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.config.settings import Settings, get_settings
@@ -127,6 +127,23 @@ def _process_to_detail(process: Process, company_name: str | None) -> ProcessDet
     )
 
 
+# ---- Authorisation -----------------------------------------------------------
+
+
+async def _require_process_owner(
+    process_id: UUID,
+    repo: ProcessRepository,
+    current_user: dict,
+) -> Process:
+    """Fetch a process and verify the current user owns it. Raises 404 or 403."""
+    process = await repo.get_process(process_id)
+    if process is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    if str(process.consultant_id) != current_user.get("sub", ""):
+        raise HTTPException(status_code=403, detail="No autorizado")
+    return process
+
+
 # ---- Endpoints -------------------------------------------------------------
 
 
@@ -171,12 +188,9 @@ async def get_process(
     process_id: UUID,
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
-    settings: Settings = Depends(get_settings),
 ) -> ProcessDetailResponse:
-    process = await repo.get_process(process_id)
-    if process is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
-    name = await _hydrate_company_name(process.company_id, settings)
+    process = await _require_process_owner(process_id, repo, current_user)
+    name = await _hydrate_company_name(process.company_id, get_settings())
     return _process_to_detail(process, name)
 
 
@@ -186,9 +200,7 @@ async def delete_process(
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
 ) -> None:
-    process = await repo.get_process(process_id)
-    if process is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    await _require_process_owner(process_id, repo, current_user)
     # Slice 1: deletion is a no-op (full lifecycle in Slice 2/3)
     return None
 
@@ -202,6 +214,7 @@ async def get_findings(
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
 ) -> FindingsResponse:
+    await _require_process_owner(process_id, repo, current_user)
     finding = await repo.get_finding(process_id)
     if finding is None:
         return FindingsResponse(
@@ -225,9 +238,7 @@ async def upsert_findings(
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
 ) -> FindingsResponse:
-    process = await repo.get_process(process_id)
-    if process is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    await _require_process_owner(process_id, repo, current_user)
     finding = Finding(
         process_id=process_id,
         answers=payload.answers,
@@ -251,6 +262,7 @@ async def get_plan(
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
 ) -> PlanResponse:
+    await _require_process_owner(process_id, repo, current_user)
     plan = await repo.get_plan(process_id)
     if plan is None:
         raise HTTPException(status_code=404, detail="Plan no encontrado")
@@ -280,9 +292,7 @@ async def generate_plan(
     repo: ProcessRepositoryDep,
     llm: LLMDep,
 ) -> PlanResponse:
-    process = await repo.get_process(process_id)
-    if process is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    process = await _require_process_owner(process_id, repo, current_user)
 
     finding = await repo.get_finding(process_id)
     if finding is None or not finding.answers:
@@ -299,7 +309,7 @@ async def generate_plan(
     except Exception as exc:
         raise HTTPException(
             status_code=502,
-            detail=f"Error al generar el plan: {exc}",
+            detail="Error al generar el plan. Intente nuevamente.",
         ) from exc
 
     plan = Plan(

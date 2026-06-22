@@ -114,3 +114,85 @@ async def test_update_user_cannot_update_role():
     
     # Verify role was not updated
     assert result.role == UserRole.CUSTOMER
+
+
+class TestAdminMultiGroup:
+    """CRITICAL-004: Admin group check must use membership, not exact list equality."""
+
+    @pytest.mark.asyncio
+    async def test_admin_with_multiple_groups_can_list_users(self):
+        """Admin in multiple Cognito groups should still pass the admin check."""
+        mock_repo = AsyncMock()
+        mock_repo.list_users.return_value = []
+        mock_repo.count_users.return_value = 0
+
+        current_user = {
+            "sub": str(uuid4()),
+            "cognito:groups": ["admin", "managers"],
+        }
+
+        result = await routes.list_users(current_user, mock_repo, skip=0, limit=10)
+        assert result.total == 0
+
+    @pytest.mark.asyncio
+    async def test_admin_with_multiple_groups_can_get_other_user(self):
+        """Admin in multiple groups can view another user's data."""
+        other_id = uuid4()
+        mock_user = User(
+            user_id=other_id,
+            role=UserRole.CUSTOMER,
+            email="other@example.com",
+            full_name="Other",
+            gov_id="99",
+        )
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_user
+
+        current_user = {
+            "sub": str(uuid4()),
+            "cognito:groups": ["consultants", "admin"],
+        }
+
+        result = await routes.get_user(other_id, current_user, mock_repo)
+        assert result.user_id == other_id
+
+    @pytest.mark.asyncio
+    async def test_admin_with_multiple_groups_can_update_other_user(self):
+        """Admin in multiple groups can update another user."""
+        other_id = uuid4()
+        mock_user = User(
+            user_id=other_id,
+            role=UserRole.CUSTOMER,
+            email="target@example.com",
+            full_name="Target",
+            gov_id="50",
+        )
+        mock_repo = AsyncMock()
+        mock_repo.get_by_id.return_value = mock_user
+        mock_repo.update.return_value = mock_user
+
+        current_user = {
+            "sub": str(uuid4()),
+            "cognito:groups": ["admin", "evaluator"],
+        }
+
+        from src.routes.user.routes import UserUpdate
+        update_data = UserUpdate(email="changed@example.com")
+
+        result = await routes.update_user(other_id, update_data, current_user, mock_repo)
+        assert result.user_id == other_id
+
+    @pytest.mark.asyncio
+    async def test_non_admin_with_multiple_groups_still_blocked(self):
+        """Non-admin with multiple non-admin groups should still get 403."""
+        other_id = uuid4()
+        mock_repo = AsyncMock()
+
+        current_user = {
+            "sub": str(uuid4()),
+            "cognito:groups": ["consultants", "evaluator"],
+        }
+
+        with pytest.raises(HTTPException) as exc_info:
+            await routes.get_user(other_id, current_user, mock_repo)
+        assert exc_info.value.status_code == 403

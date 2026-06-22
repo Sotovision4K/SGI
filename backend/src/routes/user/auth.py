@@ -6,7 +6,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from src.adapters.auth.cognito import CognitoAdapter
 from src.adapters.auth.cognito_port import CognitoPort
 from src.config.settings import SettingsDep
-from jwt import InvalidTokenError, ExpiredSignatureError, DecodeError, JWTClaimsError
+from jwt import InvalidTokenError, ExpiredSignatureError, DecodeError, MissingRequiredClaimError
 
 security = HTTPBearer()
 
@@ -36,7 +36,7 @@ async def get_current_user(
             detail="Token ha expirado",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except JWTClaimsError:
+    except MissingRequiredClaimError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Claims de token inválidos",

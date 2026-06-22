@@ -1,3 +1,5 @@
+data "aws_region" "current" {}
+
 resource "aws_cognito_user_pool" "main" {
   name = "${var.project_name}-${var.environment}-user-pool"
 
@@ -68,6 +70,11 @@ resource "aws_cognito_user_pool" "main" {
     Name        = "${var.project_name}-${var.environment}-user-pool"
     Environment = var.environment
   }
+
+  lifecycle {
+    # Schema attributes cannot be modified or removed after creation
+    ignore_changes = [schema]
+  }
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
@@ -83,30 +90,26 @@ resource "aws_cognito_user_pool_client" "web" {
   generate_secret              = false
   prevent_user_existence_errors = "ENABLED"
 
-  allowed_oauth_flows                  = "code"
+  allowed_oauth_flows                  = ["code"]
   allowed_oauth_flows_user_pool_client = true
   allowed_oauth_scopes                 = var.allowed_oauth_scopes
   callback_urls                        = var.callback_urls
   logout_urls                          = var.logout_urls
 
-  identity_providers {
-    provider_name = "COGNITO"
-  }
-
-  refresh_token_period     = 30
-  access_token_period      = 1
-  id_token_period          = 1
-  token_valid_units        = {"seconds" = 3600}
-
-  read_attributes  = ["email", "email_verified", "phone_number", "phone_number_verified", "name", "custom:role", "custom:gov_id"]
-  write_attributes = ["email", "phone_number", "name", "custom:role", "custom:gov_id"]
-
   supported_identity_providers = ["COGNITO"]
 
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-web-client"
-    Environment = var.environment
+  access_token_validity   = 1
+  id_token_validity       = 1
+  refresh_token_validity  = 30
+
+  token_validity_units {
+    access_token  = "hours"
+    id_token      = "hours"
+    refresh_token = "days"
   }
+
+  read_attributes  = ["email", "phone_number", "name"]
+  write_attributes = ["email", "phone_number", "name"]
 }
 
 resource "aws_cognito_identity_pool" "main" {

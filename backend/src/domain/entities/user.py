@@ -29,6 +29,7 @@ class Company(BaseModel):
     user_id: uuid.UUID
     business_type: str = Field(max_length=50)
     is_active: bool = True
+    name: str | None = Field(default=None, max_length=200)
 
     class Config:
         from_attributes = True

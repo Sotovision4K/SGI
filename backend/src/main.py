@@ -1,8 +1,10 @@
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import SQLModel, text
 
 from src.config.settings import get_settings
 from src.routes.user.routes import router as users_router
@@ -17,9 +19,18 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     engine = get_engine(settings.database_url)
     async with engine.begin() as conn:
-        from sqlmodel import text
-        await conn.run_sync(text("SELECT 1"))
+        await conn.run_sync(lambda sync_conn: sync_conn.execute(text("SELECT 1")))
+    # Bootstrap DB schema on first cold start
+    async with engine.begin() as conn:
+        await conn.run_sync(lambda sync_conn: SQLModel.metadata.create_all(sync_conn))
     yield
+
+
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    """Parse CORS_ALLOW_ORIGINS env var into a list of origins."""
+    if not raw:
+        return ["http://localhost:5173", "http://localhost:3000"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
 
 
 app = FastAPI(
@@ -31,7 +42,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_parse_cors_origins(os.getenv("CORS_ALLOW_ORIGINS")),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

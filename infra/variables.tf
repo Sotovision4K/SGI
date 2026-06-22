@@ -15,3 +15,10 @@ variable "project_name" {
   type        = string
   default     = "cert-app"
 }
+
+variable "anthropic_api_key" {
+  description = "Anthropic API key for LLM features (sensitive)"
+  type        = string
+  sensitive   = true
+  default     = ""
+}

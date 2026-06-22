@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from src.routes.user.auth import CurrentUserDep
@@ -57,6 +57,8 @@ async def get_company(
     company = await repo.get_company(company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if company.get("user_id") != current_user.get("sub", ""):
+        raise HTTPException(status_code=403, detail="No autorizado")
     return CompanyResponse(**company)
 
 

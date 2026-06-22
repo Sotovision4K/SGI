@@ -24,6 +24,45 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+resource "aws_iam_role_policy" "lambda_vpc_rds_ssm" {
+  name = "${var.project_name}-${var.environment}-lambda-vpc-rds-ssm"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "VpcAccess"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeNetworkInterfaces",
+          "ec2:CreateNetworkInterface",
+          "ec2:DeleteNetworkInterface"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "RdsDescribe"
+        Effect = "Allow"
+        Action = [
+          "rds:DescribeDBInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "SsmGetParameter"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = [
+          "arn:aws:ssm:*:*:parameter/${var.project_name}/${var.environment}/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_lambda_function" "api" {
   function_name = "${var.project_name}-${var.environment}-api"
 
@@ -42,7 +81,14 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      ENVIRONMENT = var.environment
+      ENVIRONMENT             = var.environment
+      DATABASE_URL            = var.database_url
+      ANTHROPIC_API_KEY       = var.anthropic_api_key
+      AWS_COGNITO_USER_POOL_ID = var.cognito_user_pool_id
+      AWS_COGNITO_CLIENT_ID   = var.cognito_client_id
+      AWS_COGNITO_REGION      = var.cognito_region
+      AWS_COGNITO_JWKS_URL    = var.cognito_jwks_url
+      CORS_ALLOW_ORIGINS      = var.cors_allow_origins
     }
   }
 
@@ -129,11 +175,13 @@ resource "aws_api_gateway_stage" "api" {
 resource "aws_api_gateway_deployment" "api" {
   rest_api_id = aws_api_gateway_rest_api.api.id
 
-  triggers_redeployment = sha1(jsonencode([
-    aws_api_gateway_resource.api.id,
-    aws_api_gateway_method.any.id,
-    aws_api_gateway_integration.lambda.id,
-  ]))
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.api.id,
+      aws_api_gateway_method.any.id,
+      aws_api_gateway_integration.lambda.id,
+    ]))
+  }
 
   lifecycle {
     create_before_destroy = true

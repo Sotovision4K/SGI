@@ -26,6 +26,7 @@ jobs:
         with:
           node-version: '20'
           cache: 'pnpm'
+          cache-dependency-path: 'frontend/pnpm-lock.yaml'
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4

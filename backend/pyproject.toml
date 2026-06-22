@@ -13,6 +13,7 @@ dependencies = [
     "psycopg[binary]",
     "boto3",
     "python-jose[cryptography]",
+    "pyjwt[crypto]",
     "httpx",
     "cachetools",
     "mangum>=0.17.0",
@@ -26,6 +27,7 @@ entrypoint = "src.main:app"
 dev-dependencies = [
     "pytest",
     "pytest-asyncio",
+    "pytest-cov",
     "httpx",
     "ruff>=0.1.0",
 ]

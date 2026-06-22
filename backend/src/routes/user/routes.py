@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, EmailStr, Field
 
-from src.domain.entities.user import User, UserRole
+from src.domain.entities.user import User
 from src.domain.repositories.user_repository import UserRepositoryPort
 from src.adapters.db.user_repository import PostgresUserRepository
 from src.config.settings import SettingsDep
@@ -74,7 +74,7 @@ async def list_users(
 ) -> UserListResponse:
     """List all users with pagination - admin only"""
     # Only admins can list all users
-    if current_user.get("cognito:groups", []) != ["admin"]:
+    if "admin" not in (current_user.get("cognito:groups") or []):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only administrators can list users",
@@ -100,7 +100,9 @@ async def get_user(
 ) -> User:
     """Get user by ID - only users can view themselves, admins can view anyone"""
     # Authorization check: user can only view their own data unless they are admin
-    if user_id != UUID(current_user.get("sub", "")) and current_user.get("cognito:groups", []) != ["admin"]:
+    groups = current_user.get("cognito:groups") or []
+    is_self = user_id == UUID(current_user.get("sub", ""))
+    if not is_self and "admin" not in groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to access this user's data",
@@ -124,7 +126,9 @@ async def update_user(
 ) -> User:
     """Update user by ID - only users can update themselves, admins can update anyone"""
     # Authorization check: user can only update their own data unless they are admin
-    if user_id != UUID(current_user.get("sub", "")) and current_user.get("cognito:groups", []) != ["admin"]:
+    groups = current_user.get("cognito:groups") or []
+    is_self = user_id == UUID(current_user.get("sub", ""))
+    if not is_self and "admin" not in groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to update this user's data",

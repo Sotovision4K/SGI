@@ -1,7 +1,7 @@
 """Unit tests for user authentication."""
 
 import pytest
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 from src.routes.user.auth import get_current_user
 from fastapi import HTTPException
 

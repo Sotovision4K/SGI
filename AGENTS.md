@@ -74,3 +74,26 @@ Agent-specific instructions are in `.opencode/agents/` (frontend rules, mockup, 
 ## Ask
 
 - see `.opencode/agents/clarify.md` if a question is ask
+
+## Active Deployment Plan
+
+**Before suggesting infrastructure changes**, read [`DEPLOY_PLAN.md`](./DEPLOY_PLAN.md). The app is being deployed to AWS (FastAPI on Lambda + React on CloudFront + RDS Postgres) and there is a multi-phase plan in progress.
+
+Quick context:
+- Stack target: AWS us-east-1, single `dev` environment, CloudFront default domain
+- Backend: Lambda (via Mangum) + API Gateway + Cognito Authorizer (in-code JWT kept as defense-in-depth)
+- Database: RDS Postgres db.t4g.micro, private subnet, schema created via `SQLModel.metadata.create_all` in `lifespan`
+- State: S3 + DynamoDB (manual bootstrap via `scripts/bootstrap-tf-state.sh`)
+- Secrets: GitHub Actions → Lambda env vars on deploy (no SSM/Secrets Manager yet)
+- RDS bootstrap: `SQLModel.metadata.create_all` in `lifespan` (migrate to Alembic before production)
+
+Current state: **Stop 1 not yet started**. Plan is to do Phase 1 (make backend deployable) + Phase 2 (add RDS) first, verify end-to-end, then continue with Phases 3-6 (state backend, Cognito Authorizer, CI hardening, frontend reconnection).
+
+Key files to know about:
+- `backend/src/main.py` — FastAPI app, lifespan, CORS
+- `backend/handler.py` — DOES NOT EXIST YET, must be created
+- `backend/src/config/settings.py` — Pydantic settings, reads from env
+- `infra/modules/` — Terraform modules (network, cognito, frontend, iam, backend)
+- `.github/workflows/backend.yml` — must be updated to call `lambda update-function-code` and add `/health` smoke test
+
+When working on infrastructure, use the [`fastapi`](../.opencode/skills/fastapi/SKILL.md) skill for FastAPI best practices.

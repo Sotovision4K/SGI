@@ -1,0 +1,2 @@
+infra\environments\dev\terraform.tfvars
+infra\environments\dev\.terraform\*

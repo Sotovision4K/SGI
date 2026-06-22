@@ -86,6 +86,16 @@ resource "aws_iam_role_policy" "github_actions_permissions" {
         ]
       },
       {
+        Sid    = "RdsDatabaseUrlAccess"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = [
+          "arn:aws:ssm:*:*:parameter/${var.project_name}/${var.environment}/database_url"
+        ]
+      },
+      {
         Sid    = "LambdaUpdateAccess"
         Effect = "Allow"
         Action = [

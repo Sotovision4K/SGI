@@ -12,10 +12,8 @@ class Settings(BaseSettings):
     aws_cognito_client_id: str
     aws_cognito_region: str
     aws_cognito_jwks_url: str
-    aws_access_key_id: str | None = None
-    aws_secret_access_key: str | None = None
+
     database_url: str
-    secret_key: str
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5"
 

@@ -1,6 +1,5 @@
 import os
 import uuid
-import json
 import logging
 from datetime import datetime, timezone
 
@@ -70,8 +69,7 @@ def handler(event: dict, context: dict) -> dict:
                         logger.error(f"Database error creating user {email}: {str(db_error)}")
                         raise
     except Exception as e:
-        logger.error(f"Unexpected error in post_signup_trigger: {str(e)}")
-        # Return event anyway to allow Cognito to complete the sign-up, but log the error
-        logger.error("User creation failed but returning success to Cognito")
+        logger.error(f"CRITICAL: User creation failed for email={email if trigger_source == 'PostConfirmation_ConfirmSignUp' else 'unknown'}: {str(e)}", exc_info=True)
+        raise RuntimeError(f"Post sign-up trigger failed: {str(e)}") from e
 
     return event

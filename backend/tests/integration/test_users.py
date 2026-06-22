@@ -1,16 +1,13 @@
 """Integration tests for user endpoints."""
 
 import pytest
-from httpx import AsyncClient
 from uuid import uuid4
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 
 @pytest.mark.asyncio
 async def test_list_users_unauthorized():
     """Test that non-admin users cannot list users."""
-    from fastapi.testclient import TestClient
-    from src.main import app
     
     # This test would need a real auth setup, but shows the pattern
 
@@ -104,15 +101,22 @@ async def test_update_user_with_multiple_fields():
 
 @pytest.mark.asyncio
 async def test_jwt_token_missing():
-    """Test that missing JWT token returns 403."""
+    """Test that an invalid token raises an HTTPException (401) via the auth dependency."""
+    from unittest.mock import MagicMock
+    from jwt import InvalidTokenError
     from src.routes.user.auth import get_current_user
     from fastapi import HTTPException
-    
-    # No credentials provided
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    mock_adapter = MagicMock()
+    mock_adapter.verify_token.side_effect = InvalidTokenError("bad token")
+
     with pytest.raises(HTTPException) as exc_info:
-        await get_current_user(None, None)
-    
-    # Should raise security error
+        await get_current_user(
+            HTTPAuthorizationCredentials(scheme="Bearer", credentials="dummy"),
+            mock_adapter,
+        )
+    assert exc_info.value.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -144,7 +148,7 @@ async def test_concurrent_user_updates():
     update2 = UserUpdate(email=None, full_name="New Name", gov_id=None, is_active=None)
     
     # Both updates should succeed independently
-    result1 = await update_user(user_id, update1, current_user, mock_repo)
-    result2 = await update_user(user_id, update2, current_user, mock_repo)
-    
+    await update_user(user_id, update1, current_user, mock_repo)
+    await update_user(user_id, update2, current_user, mock_repo)
+
     assert mock_repo.update.call_count == 2

@@ -39,8 +39,9 @@ jobs:
   package:
     needs: lint-and-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    runs-on: ubuntu-latest
+    environment: dev
 
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -57,11 +58,28 @@ jobs:
         run: uv sync
         working-directory: ./backend
 
-      - name: Package Lambda
+      - name: Package Lambda zip
         run: |
-          mkdir -p .packaged
-          cd backend
-          zip -r ../.packaged/function.zip . -x "*.pyc" "tests/*" ".venv/*"
+          set -euo pipefail
+          rm -rf .packaged
+          mkdir -p .packaged/lambda
+
+          cp -r backend/src .packaged/lambda/
+          cp backend/handler.py .packaged/lambda/
+
+          SITE_PKGS="backend/.venv/lib/python3.12/site-packages"
+          VENV_DEST=".packaged/lambda/.venv/lib/python3.12"
+          mkdir -p "$VENV_DEST"
+          cp -r "$SITE_PKGS" "$VENV_DEST/"
+
+          find .packaged/lambda -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+          find .packaged/lambda -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
+          find .packaged/lambda -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
+          find .packaged/lambda -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
+          find .packaged/lambda -type f -name "*.pyc" -delete 2>/dev/null || true
+          find .packaged/lambda -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
+
+          cd .packaged/lambda && zip -qr ../function.zip . && cd ../../..
         working-directory: .
 
       - name: Configure AWS Credentials
@@ -72,5 +90,54 @@ jobs:
           aws-region: us-east-1
 
       - name: Upload to S3
+        run: aws s3 cp .packaged/function.zip s3://cert-app-dev-backend/lambdas/function.zip
+
+      - name: Update Lambda function code
         run: |
-          aws s3 cp .packaged/function.zip s3://cert-app-dev-backend/lambdas/function.zip
+          aws lambda update-function-code \
+            --function-name cert-app-dev-api \
+            --s3-bucket cert-app-dev-backend \
+            --s3-key lambdas/function.zip
+
+      - name: Update ANTHROPIC_API_KEY env var
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY not set, skipping env var update"
+            exit 0
+          fi
+
+          CURRENT_ENV=$(aws lambda get-function-configuration \
+            --function-name cert-app-dev-api \
+            --query 'Environment.Variables' \
+            --output json 2>/dev/null || echo "{}")
+
+          if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
+            CURRENT_ENV="{}"
+          fi
+
+          UPDATED_ENV=$(echo "$CURRENT_ENV" | jq --arg key "$ANTHROPIC_API_KEY" '. + {ANTHROPIC_API_KEY: $key}')
+
+          aws lambda update-function-configuration \
+            --function-name cert-app-dev-api \
+            --environment "Variables=${UPDATED_ENV}"
+
+      - name: Wait for Lambda update to propagate
+        run: sleep 15
+
+      - name: Smoke test /health endpoint
+        run: |
+          API_ID=$(aws apigateway get-rest-apis \
+            --query "items[?name=='cert-app-dev-api'].id" \
+            --output text)
+
+          if [ -z "$API_ID" ]; then
+            echo "ERROR: Could not find API Gateway ID for 'cert-app-dev-api'"
+            exit 1
+          fi
+
+          API_URL="https://${API_ID}.execute-api.us-east-1.amazonaws.com/v1/health"
+          echo "Smoke testing: ${API_URL}"
+
+          curl -f --retry 5 --retry-delay 5 --max-time 30 "${API_URL}"

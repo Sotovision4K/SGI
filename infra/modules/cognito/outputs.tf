@@ -14,8 +14,9 @@ output "user_pool_domain" {
 }
 
 output "user_pool_domain_endpoint" {
-  description = "Cognito User Pool Domain endpoint"
-  value       = aws_cognito_user_pool_domain.main.endpoint
+  description = "Cognito User Pool Domain endpoint (hosted UI URL)"
+  # cloudfront_distribution removed in AWS provider v5 – construct URL from prefix + region
+  value = "${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.name}.amazoncognito.com"
 }
 
 output "web_client_id" {
