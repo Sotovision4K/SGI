@@ -7,6 +7,7 @@ dependencies = [
     "fastapi==0.136.3",
     "uvicorn[standard]",
     "pydantic==2.10.6",
+    "pydantic[email]",
     "pydantic-settings",
     "sqlmodel",
     "asyncpg",
@@ -31,3 +32,7 @@ dev-dependencies = [
     "httpx",
     "ruff>=0.1.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
