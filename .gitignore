@@ -1,0 +1,54 @@
+# ── Terraform ──────────────────────────────────────────────────────
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# ── Python ─────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.coverage
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# ── Node ───────────────────────────────────────────────────────────
+node_modules/
+frontend/dist/
+.vite/
+
+# ── Environment & secrets ──────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+
+# ── OS / editor ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# ── Build artifacts ────────────────────────────────────────────────
+.packaged/
+function.zip
+*.zip
