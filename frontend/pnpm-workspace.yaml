@@ -1,0 +1,4 @@
+
+overrides:
+  react: $react
+  react-dom: $react-dom

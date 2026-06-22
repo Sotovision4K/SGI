@@ -61,7 +61,7 @@ jobs:
           EOF
 
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install 
         working-directory: ./frontend
 
       - name: Run lint
