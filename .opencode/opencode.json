@@ -64,13 +64,15 @@
     "tdd-developer": {
         "description": "Writes tests before implementation code. Use when there is a need for high test coverage and maintainable code.",
         "mode": "subagent",
-        "model": "opencode-go/deepseek-v4-pro",
+        "model": "opencode-go/glm-5.1",
         "prompt": "{file:prompts/tdd-developer.txt}",
         "tools": {
         "read": true,
         "write": true,
         "edit": true,
-        "bash": true
+        "bash": true,
+        "glob": true,
+        "grep": true
         }
     },
     "aws-infra-engineer": {

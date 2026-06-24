@@ -1,9 +1,11 @@
+import logging
 import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import ValidationError
 from sqlmodel import SQLModel, text
 
 from src.config.settings import get_settings
@@ -13,16 +15,30 @@ from src.routes.companies.routes import router as companies_router
 from src.routes.questionnaires.routes import router as questionnaires_router
 from src.adapters.db.user_repository import get_engine
 
+logger = logging.getLogger(__name__)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    settings = get_settings()
-    engine = get_engine(settings.database_url)
-    async with engine.begin() as conn:
-        await conn.run_sync(lambda sync_conn: sync_conn.execute(text("SELECT 1")))
-    # Bootstrap DB schema on first cold start
-    async with engine.begin() as conn:
-        await conn.run_sync(lambda sync_conn: SQLModel.metadata.create_all(sync_conn))
+    # Ensure settings load — missing env vars or unreachable DB must not
+    # crash the app, otherwise even /health returns 502.
+    try:
+        settings = get_settings()
+    except ValidationError as e:
+        logger.error("Settings validation failed — app starting without DB: %s", e)
+        yield
+        return
+
+    try:
+        engine = get_engine(settings.database_url)
+        async with engine.begin() as conn:
+            await conn.run_sync(lambda sync_conn: sync_conn.execute(text("SELECT 1")))
+        # Bootstrap DB schema on first cold start
+        async with engine.begin() as conn:
+            await conn.run_sync(lambda sync_conn: SQLModel.metadata.create_all(sync_conn))
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error("Database initialization failed — app starting without DB: %s", e)
     yield
 
 

@@ -24,8 +24,8 @@ dependencies = [
 [tool.fastapi]
 entrypoint = "src.main:app"
 
-[tool.uv]
-dev-dependencies = [
+[dependency-groups]
+dev = [
     "pytest",
     "pytest-asyncio",
     "pytest-cov",
