@@ -54,6 +54,7 @@ def get_engine(database_url: str):
             echo=False,  # Disabled in production - prevents sensitive data leakage
             pool_pre_ping=True,  # Verify connections before using them
             pool_recycle=3600,  # Recycle connections every hour
+            connect_args={"timeout": 5},  # Fail fast if DB unreachable (vs 30s default)
         )
     return _engine
 
