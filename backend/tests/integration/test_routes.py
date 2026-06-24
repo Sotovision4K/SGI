@@ -2,14 +2,14 @@
 
 Derived from the spec:
 - All routes require Bearer auth (return 401/403 without)
-- /api/v1/processes — GET, POST
-- /api/v1/processes/{id} — GET, DELETE
-- /api/v1/processes/{id}/findings — GET, PUT
-- /api/v1/processes/{id}/plan — GET
-- /api/v1/processes/{id}/generate-plan — POST
-- /api/v1/companies — GET, POST
-- /api/v1/companies/{id} — GET
-- /api/v1/questionnaires/{iso} — GET (iso9001, iso14001, iso45001)
+- /processes — GET, POST
+- /processes/{id} — GET, DELETE
+- /processes/{id}/findings — GET, PUT
+- /processes/{id}/plan — GET
+- /processes/{id}/generate-plan — POST
+- /companies — GET, POST
+- /companies/{id} — GET
+- /questionnaires/{iso} — GET (iso9001, iso14001, iso45001)
 """
 
 import uuid
@@ -100,7 +100,7 @@ class TestCompaniesRoutes:
             "src.routes.companies.routes.get_company_repository",
             return_value=lambda: mock_repo,
         ):
-            r = client.get("/api/v1/companies")
+            r = client.get("/companies")
 
         # If dependency override didn't kick in, the auth dep would fire first
         # and return 401. We expect 200 here.
@@ -111,7 +111,7 @@ class TestCompaniesRoutes:
             assert body["total"] == len(items)
 
     def test_create_company_requires_name(self, client):
-        r = client.post("/api/v1/companies", json={"name": ""})
+        r = client.post("/companies", json={"name": ""})
         assert r.status_code == 422
 
     def test_create_company_uses_sub_as_owner(self, client, mock_current_user):
@@ -129,7 +129,7 @@ class TestCompaniesRoutes:
             "src.routes.companies.routes.get_company_repository",
             return_value=lambda: mock_repo,
         ):
-            r = client.post("/api/v1/companies", json={"name": "Acme"})
+            r = client.post("/companies", json={"name": "Acme"})
 
         if r.status_code in (200, 201):
             assert r.json()["user_id"] == mock_current_user["sub"]
@@ -147,7 +147,7 @@ class TestQuestionnairesRoutes:
     )
 
     def test_serves_iso9001_questionnaire(self, client):
-        r = client.get("/api/v1/questionnaires/iso9001")
+        r = client.get("/questionnaires/iso9001")
         if r.status_code == 200:
             body = r.json()
             assert body["iso_standard"] == "iso9001"
@@ -165,29 +165,29 @@ class TestQuestionnairesRoutes:
                     assert q["type"] in ("text", "textarea", "select")
 
     def test_serves_iso14001_questionnaire(self, client):
-        r = client.get("/api/v1/questionnaires/iso14001")
+        r = client.get("/questionnaires/iso14001")
         if r.status_code == 200:
             assert r.json()["iso_standard"] == "iso14001"
 
     def test_serves_iso45001_questionnaire(self, client):
-        r = client.get("/api/v1/questionnaires/iso45001")
+        r = client.get("/questionnaires/iso45001")
         if r.status_code == 200:
             assert r.json()["iso_standard"] == "iso45001"
 
     def test_rejects_unknown_iso(self, client):
-        r = client.get("/api/v1/questionnaires/iso27001")
+        r = client.get("/questionnaires/iso27001")
         assert r.status_code == 404
 
     def test_questionnaires_have_about_30_questions(self, client):
         for iso in ("iso9001", "iso14001", "iso45001"):
-            r = client.get(f"/api/v1/questionnaires/{iso}")
+            r = client.get(f"/questionnaires/{iso}")
             if r.status_code == 200:
                 total = sum(len(g["questions"]) for g in r.json()["groups"])
                 assert total >= 20, f"{iso} has only {total} questions"
                 assert total <= 50, f"{iso} has too many questions ({total})"
 
     def test_questionnaires_are_in_spanish(self, client):
-        r = client.get("/api/v1/questionnaires/iso9001")
+        r = client.get("/questionnaires/iso9001")
         if r.status_code == 200:
             raw = r.text
             # Common Spanish words that should appear
@@ -207,7 +207,7 @@ class TestProcessesRoutes:
             "src.routes.processes.routes.get_process_repository",
             return_value=lambda: mock_repo,
         ):
-            r = client.get("/api/v1/processes")
+            r = client.get("/processes")
         if r.status_code == 200:
             body = r.json()
             assert "items" in body
@@ -215,14 +215,14 @@ class TestProcessesRoutes:
 
     def test_create_process_requires_valid_iso(self, client):
         r = client.post(
-            "/api/v1/processes",
+            "/processes",
             json={"company_id": str(uuid.uuid4()), "iso_standard": "iso27001"},
         )
         assert r.status_code == 422
 
     def test_create_process_requires_company_id_uuid(self, client):
         r = client.post(
-            "/api/v1/processes",
+            "/processes",
             json={"company_id": "not-a-uuid", "iso_standard": "iso9001"},
         )
         assert r.status_code == 422
@@ -251,7 +251,7 @@ class TestProcessesRoutes:
             AsyncMock(return_value=None),
         ):
             r = client.post(
-                "/api/v1/processes",
+                "/processes",
                 json={"company_id": str(uuid.uuid4()), "iso_standard": "iso9001"},
             )
 
@@ -273,7 +273,7 @@ class TestFindingsRoutes:
             "src.routes.processes.routes.get_process_repository",
             return_value=lambda: mock_repo,
         ):
-            r = client.get(f"/api/v1/processes/{uuid.uuid4()}/findings")
+            r = client.get(f"/processes/{uuid.uuid4()}/findings")
         if r.status_code == 200:
             body = r.json()
             assert body["answers"] == {}
@@ -288,7 +288,7 @@ class TestFindingsRoutes:
             return_value=lambda: mock_repo,
         ):
             r = client.put(
-                f"/api/v1/processes/{uuid.uuid4()}/findings",
+                f"/processes/{uuid.uuid4()}/findings",
                 json={"answers": {"q1": "x"}, "free_text": ""},
             )
         # 404 because process doesn't exist; repo mock returns None
@@ -314,7 +314,7 @@ class TestGeneratePlanRoute:
             "src.routes.processes.routes.get_anthropic_adapter",
             return_value=lambda: MagicMock(generate_plan=AsyncMock()),
         ):
-            r = client.post(f"/api/v1/processes/{uuid.uuid4()}/generate-plan")
+            r = client.post(f"/processes/{uuid.uuid4()}/generate-plan")
         # 400 because no findings yet
         print(f"\nStatus: {r.status_code}, Body: {r.text[:300]}")
         assert r.status_code in (400, 404, 500, 422)
@@ -331,7 +331,7 @@ class TestGeneratePlanRoute:
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
         fastapi_app.dependency_overrides[get_anthropic_adapter] = lambda: mock_llm
         try:
-            r = client.post(f"/api/v1/processes/{uuid.uuid4()}/generate-plan")
+            r = client.post(f"/processes/{uuid.uuid4()}/generate-plan")
         finally:
             fastapi_app.dependency_overrides.pop(get_process_repository, None)
             fastapi_app.dependency_overrides.pop(get_anthropic_adapter, None)
@@ -362,7 +362,7 @@ class TestGeneratePlanRoute:
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
         fastapi_app.dependency_overrides[get_anthropic_adapter] = lambda: mock_llm
         try:
-            r = client.post(f"/api/v1/processes/{process.id}/generate-plan")
+            r = client.post(f"/processes/{process.id}/generate-plan")
         finally:
             fastapi_app.dependency_overrides.pop(get_process_repository, None)
             fastapi_app.dependency_overrides.pop(get_anthropic_adapter, None)
@@ -417,7 +417,7 @@ class TestGeneratePlanRoute:
             "src.routes.processes.routes.get_anthropic_adapter",
             return_value=lambda: mock_llm,
         ):
-            r = client.post(f"/api/v1/processes/{process.id}/generate-plan")
+            r = client.post(f"/processes/{process.id}/generate-plan")
 
         if r.status_code == 200:
             body = r.json()
@@ -478,7 +478,7 @@ class TestIdorProcesses:
         try:
             with patch("src.routes.processes.routes._hydrate_company_name",
                        new=AsyncMock(return_value="Test Corp")):
-                r = client.get(f"/api/v1/processes/{process.id}")
+                r = client.get(f"/processes/{process.id}")
         finally:
             if old is not None:
                 fastapi_app.dependency_overrides[get_process_repository] = old
@@ -499,7 +499,7 @@ class TestIdorProcesses:
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
-            r = client.get(f"/api/v1/processes/{process.id}")
+            r = client.get(f"/processes/{process.id}")
         finally:
             _restore_auth(fastapi_app, old_auth)
             if old_repo is not None:
@@ -522,7 +522,7 @@ class TestIdorProcesses:
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
-            r = client.delete(f"/api/v1/processes/{process.id}")
+            r = client.delete(f"/processes/{process.id}")
         finally:
             _restore_auth(fastapi_app, old_auth)
             if old_repo is not None:
@@ -549,7 +549,7 @@ class TestIdorProcesses:
                 return_value=lambda: mock_repo,
             ):
                 r = client.put(
-                    f"/api/v1/processes/{process.id}/findings",
+                    f"/processes/{process.id}/findings",
                     json={"answers": {"q": "x"}, "free_text": "malicious"},
                 )
         finally:
@@ -581,7 +581,7 @@ class TestIdorProcesses:
         fastapi_app.dependency_overrides[get_anthropic_adapter] = lambda: mock_llm
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
-            r = client.post(f"/api/v1/processes/{process.id}/generate-plan")
+            r = client.post(f"/processes/{process.id}/generate-plan")
         finally:
             _restore_auth(fastapi_app, old_auth)
             if old_repo is not None:
@@ -614,7 +614,7 @@ class TestIdorProcesses:
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
-            r = client.get(f"/api/v1/processes/{process.id}/findings")
+            r = client.get(f"/processes/{process.id}/findings")
         finally:
             _restore_auth(fastapi_app, old_auth)
             if old_repo is not None:
@@ -641,7 +641,7 @@ class TestIdorProcesses:
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
-            r = client.get(f"/api/v1/processes/{process.id}/plan")
+            r = client.get(f"/processes/{process.id}/plan")
         finally:
             _restore_auth(fastapi_app, old_auth)
             if old_repo is not None:
@@ -672,7 +672,7 @@ class TestIdorCompanies:
         fastapi_app.dependency_overrides[get_company_repository] = lambda: mock_repo
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
-            r = client.get(f"/api/v1/companies/{owner_company['company_id']}")
+            r = client.get(f"/companies/{owner_company['company_id']}")
         finally:
             _restore_auth(fastapi_app, old_auth)
             if old_repo is not None:
@@ -699,7 +699,7 @@ class TestIdorCompanies:
         old = fastapi_app.dependency_overrides.get(get_company_repository)
         fastapi_app.dependency_overrides[get_company_repository] = lambda: mock_repo
         try:
-            r = client.get(f"/api/v1/companies/{own_company['company_id']}")
+            r = client.get(f"/companies/{own_company['company_id']}")
         finally:
             if old is not None:
                 fastapi_app.dependency_overrides[get_company_repository] = old

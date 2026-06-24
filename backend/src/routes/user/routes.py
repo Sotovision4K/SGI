@@ -11,7 +11,7 @@ from src.config.settings import SettingsDep
 from src.routes.user.auth import CurrentUserDep
 
 
-router = APIRouter(prefix="/api/v1/users", tags=["users"])
+router = APIRouter(prefix="/users", tags=["users"])
 
 
 def get_user_repository(settings: SettingsDep) -> UserRepositoryPort:

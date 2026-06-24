@@ -9,7 +9,7 @@ from src.adapters.db.company_repository import CompanyRepository
 from src.config.settings import Settings, get_settings
 
 
-router = APIRouter(prefix="/api/v1/companies", tags=["companies"])
+router = APIRouter(prefix="/companies", tags=["companies"])
 
 
 def get_company_repository(settings: Settings = Depends(get_settings)) -> CompanyRepository:

@@ -54,6 +54,7 @@ app = FastAPI(
     description="Backend API for SGI Pro - ISO Management System Certification Tool",
     version="0.1.0",
     lifespan=lifespan,
+    root_path="/api/v1"
 )
 
 app.add_middleware(

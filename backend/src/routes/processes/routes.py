@@ -14,7 +14,7 @@ from src.adapters.llm.anthropic_adapter import get_anthropic_adapter
 from src.routes.user.auth import CurrentUserDep
 
 
-router = APIRouter(prefix="/api/v1/processes", tags=["processes"])
+router = APIRouter(prefix="/processes", tags=["processes"])
 
 
 def get_process_repository(settings: Settings = Depends(get_settings)) -> ProcessRepository:

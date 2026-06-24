@@ -248,7 +248,7 @@ def test_db_endpoint_fails_gracefully_when_db_unreachable(valid_env):
         # raise_server_exceptions=False is critical: without it, TestClient
         # re-raises any unhandled exception instead of returning a 500.
         with TestClient(app, raise_server_exceptions=False) as client:
-            response = client.get("/api/v1/users?skip=0&limit=1")
+            response = client.get("/users?skip=0&limit=1")
 
         app.dependency_overrides.clear()
 

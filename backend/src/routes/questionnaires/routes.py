@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, status
 from src.routes.user.auth import CurrentUserDep
 
 
-router = APIRouter(prefix="/api/v1/questionnaires", tags=["questionnaires"])
+router = APIRouter(prefix="/questionnaires", tags=["questionnaires"])
 
 
 _QUESTIONNAIRES_DIR = Path(__file__).parent.parent.parent.parent / "questionnaires"
