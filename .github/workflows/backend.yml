@@ -77,7 +77,6 @@ jobs:
           find .packaged/lambda -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
           find .packaged/lambda -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
           find .packaged/lambda -type f -name "*.pyc" -delete 2>/dev/null || true
-          find .packaged/lambda -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null || true
 
           cd .packaged/lambda && zip -qr ../function.zip . && cd ../../..
         working-directory: .
