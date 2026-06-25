@@ -61,8 +61,8 @@ resource "aws_db_instance" "main" {
   vpc_security_group_ids = [aws_security_group.rds.id]
 
   publicly_accessible    = false
-  skip_final_snapshot    = false
-  deletion_protection    = true
+  skip_final_snapshot    = var.skip_final_snapshot
+  deletion_protection    = var.deletion_protection
   backup_retention_period = 7
   backup_window           = "03:00-04:00"
   maintenance_window      = "sun:05:00-sun:06:00"

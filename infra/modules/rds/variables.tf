@@ -42,3 +42,15 @@ variable "allocated_storage" {
   type        = number
   default     = 20
 }
+
+variable "deletion_protection" {
+  description = "Enable deletion protection on the DB instance"
+  type        = bool
+  default     = false
+}
+
+variable "skip_final_snapshot" {
+  description = "Skip final snapshot when destroying the DB"
+  type        = bool
+  default     = true
+}
