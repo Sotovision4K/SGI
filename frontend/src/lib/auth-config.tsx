@@ -1,4 +1,9 @@
 import {AuthProvider, type AuthProviderProps} from "react-oidc-context"
+import { Log } from "oidc-client-ts"
+
+// Enable verbose OIDC logging for debugging token exchange
+Log.setLogger(console)
+Log.setLevel(Log.DEBUG)
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const cognitoConfig: AuthProviderProps = {
