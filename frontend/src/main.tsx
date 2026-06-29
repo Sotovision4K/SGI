@@ -4,16 +4,17 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 
-// Dump sessionStorage on page load BEFORE oidc-client-ts processes callback
-// This captures PKCE state if it was stored before the Cognito redirect
+// Dump BOTH storages BEFORE oidc-client-ts processes callback
+// PKCE verifier is now in localStorage, not sessionStorage
 const url = window.location.href
 if (url.includes('?code=') || url.includes('&code=')) {
-  console.log('[sessionStorage] Before callback processing, URL has code param')
-  for (let i = 0; i < sessionStorage.length; i++) {
-    const key = sessionStorage.key(i)!;
-    const val = sessionStorage.getItem(key)!;
-    console.log(`[sessionStorage] ${key} = ${val.substring(0, 200)}`);
+  console.log('[localStorage] Before callback processing, URL has code param')
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i)!;
+    const val = localStorage.getItem(key)!;
+    console.log(`[localStorage] ${key} = ${val.substring(0, 200)}`);
   }
+  console.log('[localStorage] Total keys:', localStorage.length);
   console.log('[sessionStorage] Total keys:', sessionStorage.length);
 }
 
