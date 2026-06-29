@@ -1,5 +1,4 @@
 import os
-import uuid
 import logging
 from datetime import datetime, timezone
 
@@ -28,9 +27,9 @@ def handler(event: dict, context: dict) -> dict:
         if trigger_source == "PostConfirmation_ConfirmSignUp":
             user_attributes = event.get("request", {}).get("userAttributes", {})
             email = user_attributes.get("email")
-            user_id = str(uuid.uuid4())
-            full_name = f"{user_attributes.get('given_name', '')} {user_attributes.get('family_name', '')}".strip()
-            gov_id = user_attributes.get("custom:gov_id", "")
+            user_id = user_attributes.get("sub")
+            full_name = user_attributes.get("name", "")
+            gov_id = user_attributes.get("custom:govId", "")
             role = user_attributes.get("custom:role", "customer")
 
             logger.info(f"Post sign-up trigger: Creating user {email} with role {role}")

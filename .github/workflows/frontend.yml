@@ -52,7 +52,7 @@ jobs:
           VITE_COGNITO_USER_POOL_ID=${{ steps.cognito.outputs.USER_POOL_ID }}
           VITE_COGNITO_CLIENT_ID=${{ steps.cognito.outputs.CLIENT_ID }}
           VITE_COGNITO_REGION=${{ steps.cognito.outputs.COGNITO_REGION }}
-          VITE_COGNITO_AUTHORITY=https://cognito-idp.${{ steps.cognito.outputs.COGNITO_REGION }}.amazoncognito.com/${{ steps.cognito.outputs.USER_POOL_ID }}
+          VITE_COGNITO_AUTHORITY=https://cognito-idp.${{ steps.cognito.outputs.COGNITO_REGION }}.amazonaws.com/${{ steps.cognito.outputs.USER_POOL_ID }}
           VITE_COGNITO_DOMAIN=${{ vars.COGNITO_DOMAIN }}
           VITE_REDIRECT_SIGN_IN=https://${{ vars.CF_DOMAIN }}/processes
           VITE_REDIRECT_SIGN_OUT=https://${{ vars.CF_DOMAIN }}/auth/signin

@@ -51,6 +51,7 @@ function App() {
                 />
                 <Route
                   path="/processes/:processId"
+                  
                   element={
                     <ProtectedRoute>
                       <ProcessDetailPage />

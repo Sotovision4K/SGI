@@ -3,7 +3,7 @@ data "aws_region" "current" {}
 resource "aws_cognito_user_pool" "main" {
   name = "${var.project_name}-${var.environment}-user-pool"
 
-  alias_attributes = ["email", "phone_number"]
+  username_attributes = ["email"]
 
   auto_verified_attributes = ["email"]
 
@@ -48,7 +48,7 @@ resource "aws_cognito_user_pool" "main" {
   }
 
   schema {
-    name                = "gov_id"
+    name                = "govId"
     attribute_data_type = "String"
     required            = false
     mutable            = true
@@ -108,8 +108,8 @@ resource "aws_cognito_user_pool_client" "web" {
     refresh_token = "days"
   }
 
-  read_attributes  = ["email", "phone_number", "name", "custom:role", "custom:gov_id"]
-  write_attributes = ["email", "phone_number", "name", "custom:role", "custom:gov_id"]
+  read_attributes  = ["email", "phone_number", "name", "custom:role", "custom:govId"]
+  write_attributes = ["email", "phone_number", "name", "custom:role", "custom:govId"]
 }
 
 resource "aws_cognito_identity_pool" "main" {

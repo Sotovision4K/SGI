@@ -76,7 +76,7 @@ export async function signUp(
   attributes: {
     name: string;
     phone_number: string;
-    'custom:gov_id': string;
+    'custom:govId': string;
     'custom:role': string;
   }
 ): Promise<CognitoAuthResponse> {
@@ -89,7 +89,7 @@ export async function signUp(
         { Name: 'email', Value: email },
         { Name: 'name', Value: attributes.name },
         { Name: 'phone_number', Value: attributes.phone_number },
-        { Name: 'custom:gov_id', Value: attributes['custom:gov_id'] },
+        { Name: 'custom:govId', Value: attributes['custom:govId'] },
         { Name: 'custom:role', Value: attributes['custom:role'] },
       ],
     });
