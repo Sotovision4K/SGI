@@ -7,19 +7,13 @@ Log.setLevel(Log.DEBUG)
 
 // eslint-disable-next-line react-refresh/only-export-components
 export const cognitoConfig: AuthProviderProps = {
-    authority : import.meta.env.VITE_COGNITO_AUTHORITY,
-    client_id : import.meta.env.VITE_COGNITO_CLIENT_ID,
-    redirect_uri : import.meta.env.VITE_REDIRECT_URI,
-    post_logout_redirect_uri : import.meta.env.VITE_REDIRECT_SIGN_OUT,
-    response_type : 'code',
+    authority: import.meta.env.VITE_COGNITO_AUTHORITY as string,
+    client_id: import.meta.env.VITE_COGNITO_CLIENT_ID as string,
+    redirect_uri: import.meta.env.VITE_REDIRECT_URI as string,
+    post_logout_redirect_uri: import.meta.env.VITE_REDIRECT_SIGN_OUT as string,
+    response_type: 'code',
     scope: "openid email phone",
-    // CSRF: oidc-client-ts validates state internally.
-    // Use location.replace (not history API) to prevent React re-renders
-    // that can trigger a second code exchange → "invalid_grant".
-    // SignInPage's useEffect handles the final redirect to /processes.
-    onSigninCallback: () => {
-        window.location.replace(window.location.pathname);
-    }
+    // No onSigninCallback — let oidc-client-ts handle the URL cleanup internally
 } as const;
 
 
