@@ -57,7 +57,7 @@ module "cognito" {
   environment  = var.environment
   project_name = var.project_name
 
-  callback_urls = var.frontend_origin != "" ? ["${var.frontend_origin}/auth/signin"] : ["http://localhost:5173/auth/signin"]
+  callback_urls = var.frontend_origin != "" ? ["${var.frontend_origin}/auth/signin", "${var.frontend_origin}/"] : ["http://localhost:5173/auth/signin", "http://localhost:5173/"]
   logout_urls   = var.frontend_origin != "" ? ["${var.frontend_origin}/auth/signin"] : ["http://localhost:5173/auth/signin"]
 }
 

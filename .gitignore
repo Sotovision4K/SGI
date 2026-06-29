@@ -54,3 +54,5 @@ Thumbs.db
 .packaged/
 function.zip
 *.zip
+awscli_1.18.69-1ubuntu0.20.04.1_all.deb
+unzip_6.0-25ubuntu1.2_amd64.deb
