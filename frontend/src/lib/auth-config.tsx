@@ -8,11 +8,12 @@ export const cognitoConfig: AuthProviderProps = {
     post_logout_redirect_uri : import.meta.env.VITE_REDIRECT_SIGN_OUT,
     response_type : 'code',
     scope: "openid email phone",
-    // CSRF: oidc-client-ts validates state internally before this callback runs.
-    // Navigate away from callback URL immediately to prevent double code exchange
-    // that would cause "invalid_grant". SignInPage's useEffect handles the redirect.
+    // CSRF: oidc-client-ts validates state internally.
+    // Use location.replace (not history API) to prevent React re-renders
+    // that can trigger a second code exchange → "invalid_grant".
+    // SignInPage's useEffect handles the final redirect to /processes.
     onSigninCallback: () => {
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.location.replace(window.location.pathname);
     }
 } as const;
 
