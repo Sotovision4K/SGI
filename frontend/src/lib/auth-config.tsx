@@ -5,8 +5,11 @@ export const cognitoConfig: AuthProviderProps = {
     authority : import.meta.env.VITE_COGNITO_AUTHORITY,
     client_id : import.meta.env.VITE_COGNITO_CLIENT_ID,
     redirect_uri : import.meta.env.VITE_REDIRECT_URI,
+    post_logout_redirect_uri : import.meta.env.VITE_REDIRECT_SIGN_OUT,
     response_type : 'code',
     scope: "openid email phone",
+    // CSRF: oidc-client-ts validates state parameter internally before this callback runs.
+    // Do NOT process ?code= or ?state= query params manually.
     onSigninCallback: () =>{
         window.history.replaceState({}, document.title, window.location.pathname);
     }

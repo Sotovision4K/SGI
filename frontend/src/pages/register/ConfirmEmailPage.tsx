@@ -71,10 +71,8 @@ export function ConfirmEmailPage() {
 
       setSuccess(true);
       setTimeout(() => {
-        const redirectTarget = (import.meta.env.VITE_REDIRECT_SIGN_IN as string | undefined) || '/processes';
         if (auth.user?.id_token) {
-          window.history.replaceState({}, document.title, redirectTarget);
-          window.location.replace(redirectTarget);
+          navigate('/processes', { replace: true });
         } else {
           auth.signinRedirect();
         }

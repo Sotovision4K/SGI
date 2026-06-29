@@ -6,13 +6,18 @@ import { Button } from '../../components/ui/Button';
 
 export function SignInPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, isLoading, signinRedirect, error } = useAuth();
+  const auth = useAuth();
+  const { isAuthenticated, isLoading, signinRedirect, error } = auth;
 
   useEffect(() => {
     if (isAuthenticated && !isLoading) {
-      navigate('/processes', { replace: true });
+      // Read intended destination from OIDC state (deep-link support from ProtectedRoute)
+      const from = (auth.user?.state as { from?: string } | undefined)?.from;
+      // Only navigate to relative paths to prevent open redirect
+      const destination = (from && from.startsWith('/')) ? from : '/processes';
+      navigate(destination, { replace: true });
     }
-  }, [isAuthenticated, isLoading, navigate]);
+  }, [isAuthenticated, isLoading, navigate, auth.user?.state]);
 
   // Log raw OIDC error for debugging — never expose to users
   useEffect(() => {

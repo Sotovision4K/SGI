@@ -28,6 +28,16 @@ output "frontend_cloudfront_domain" {
   value       = module.frontend.cloudfront_domain
 }
 
+output "frontend_cloudfront_distribution_id" {
+  description = "Frontend CloudFront distribution ID"
+  value       = module.frontend.cloudfront_distribution_id
+}
+
+output "frontend_s3_bucket_name" {
+  description = "Frontend S3 bucket name"
+  value       = module.frontend.s3_bucket_name
+}
+
 output "api_endpoint" {
   description = "Backend API endpoint"
   value       = module.backend.api_endpoint
