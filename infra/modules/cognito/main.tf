@@ -108,7 +108,7 @@ resource "aws_cognito_user_pool_client" "web" {
     refresh_token = "days"
   }
 
-  read_attributes  = ["email", "phone_number", "name", "custom:role", "custom:govId"]
+  read_attributes  = ["email", "email_verified", "phone_number", "phone_number_verified", "name", "custom:role", "custom:govId"]
   write_attributes = ["email", "phone_number", "name", "custom:role", "custom:govId"]
 }
 
