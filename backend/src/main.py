@@ -48,31 +48,6 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
         return ["http://localhost:5173", "http://localhost:3000"]
     return [o.strip() for o in raw.split(",") if o.strip()]
 
-
-from starlette.types import ASGIApp, Receive, Scope, Send
-
-class FixGatewayBody:
-    """API Gateway sends body=null for GET/HEAD. Mangum converts it to b""
-    but FastAPI's dependency injection on routers still attempts body
-    consumption when Authorization header is present, causing 422.
-    This middleware intercepts the ASGI receive and ensures the first
-    body chunk is empty bytes on safe methods."""
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] == "http" and scope["method"] in ("GET", "HEAD", "DELETE", "OPTIONS"):
-            received = False
-            async def safe_receive():
-                nonlocal received
-                if not received:
-                    received = True
-                    return {"type": "http.request", "body": b"", "more_body": False}
-                return await receive()
-            await self.app(scope, safe_receive, send)
-        else:
-            await self.app(scope, receive, send)
-
 app = FastAPI(
     title="SGI Pro API",
     description="Backend API for SGI Pro - ISO Management System Certification Tool",
@@ -81,8 +56,6 @@ app = FastAPI(
     root_path="/api/v1"
     
 )
-
-app.add_middleware(FixGatewayBody)
 
 app.add_middleware(
     CORSMiddleware,
