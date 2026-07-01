@@ -101,29 +101,10 @@ jobs:
       - name: Wait for code update to finish
         run: aws lambda wait function-updated --function-name cert-app-dev-api
 
-      - name: Update ANTHROPIC_API_KEY env var
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY not set, skipping env var update"
-            exit 0
-          fi
-
-          CURRENT_ENV=$(aws lambda get-function-configuration \
-            --function-name cert-app-dev-api \
-            --query 'Environment.Variables' \
-            --output json 2>/dev/null || echo "{}")
-
-          if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
-            CURRENT_ENV="{}"
-          fi
-
-          UPDATED_ENV=$(echo "$CURRENT_ENV" | jq --arg key "$ANTHROPIC_API_KEY" '. + {ANTHROPIC_API_KEY: $key}')
-
-          aws lambda update-function-configuration \
-            --function-name cert-app-dev-api \
-            --environment "$(echo "$UPDATED_ENV" | jq -c '{Variables: .}')"
+      # NOTE: DATABASE_URL and ANTHROPIC_API_KEY env vars are set by Terraform
+      # via the backend module's environment.variables block. CI only updates
+      # function code. To change these secrets, run `terraform apply` with
+      # the TF_VAR_ variables set.
 
       - name: Wait for Lambda update to propagate
         run: sleep 15

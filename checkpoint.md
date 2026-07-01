@@ -1,78 +1,140 @@
-# Debugging Checkpoint — June 29, 2026
+# Migration Plan — VPC-less + Supabase
 
-## Current Issue: 422 on API calls with Authorization header
+## Decision
 
-### Symptom
-Any GET request to router endpoints (e.g., `/api/v1/processes`, `/api/v1/users`) with an `Authorization: Bearer {token}` header returns **422** with body validation errors. Without the header, it returns 401 "Not authenticated" (correct). The `/health` endpoint (app-level, not in a router) works fine with or without the header.
+Move from VPC + RDS Postgres to VPC-less Lambda + Supabase Postgres Free tier for prototype cost reduction (~$55/mo → ~$2-5/mo).
+
+## Architecture
 
 ```
-GET /v1/api/v1/processes + Authorization: Bearer test → 422
-  {"detail":[{"type":"missing","loc":["body"],"msg":"Field required","input":null}]}
-
-GET /v1/api/v1/processes (no header) → 401 "Not authenticated" ✅
-GET /v1/api/v1/health + Authorization: Bearer test → 200 ✅
+CloudFront → S3 (React frontend)
+Cognito User Pool (Hosted UI + JWT)
+API Gateway (/v1/**) → Lambda (VPC-less, Python 3.12, 120s timeout)
+Lambda → Supabase (PgBouncer :6543, TLS)
+Lambda → Anthropic API (HTTPS outbound)
 ```
 
-### What We Know
-- **Affects ALL router endpoints** (processes, users, companies), but NOT `@app.get("/health")`
-- **Only with `Authorization: Bearer {non-empty}`** header — invalid formats like `Authorization: x` or empty `Bearer ` work fine (401)
-- **Not a Mangum body handling issue** — Mangum v0.21.0 correctly converts `body: null` to `b""`
-- **Not a Cognito callback issue** — sign-in flow works end-to-end
-- **The code in the repo does NOT have models with `settings` or `payload` fields** — these are coming from old deployed code or a library
+| Component | Before | After |
+|-----------|--------|-------|
+| Database | RDS Postgres db.t4g.micro ($18-22/mo) | Supabase Free (500MB, pauses after 1wk) |
+| Network | VPC + NAT Gateway + EIP (~$32/mo) | None (VPC-less Lambda) |
+| Lambda | VPC-attached (private subnet) | VPC-less (direct internet) |
+| Auth | Cognito User Pool | No change |
+| API Gateway | REST API, authorization=NONE | No change (Authorizer deferred to Stop 2) |
+| Frontend | S3 + CloudFront + OAC | No change |
+| Anthropic | API key in Lambda env | No change |
 
-### Root Cause Theory
-FastAPI's dependency injection (specifically `HTTPBearer` when extracting the `Authorization` header) triggers request body consumption on router endpoints. The body from API Gateway proxy is `null` → Mangum converts to `b""` → FastAPI/Starlette still tries to parse it → 422. This only happens on router endpoints because the dependency chain (`CurrentUserDep` → `get_current_user` → `HTTPBearer`) is unique to route handlers.
+## Supabase Connection String
 
-### What Was Fixed (Working)
-| Issue | Fix | Status |
-|-------|-----|--------|
-| `invalid_grant` on sign-in | Added `email_verified` + `phone_number_verified` to Cognito `read_attributes` (TF) | ✅ |
-| Users stuck on LandingPage after sign-in | Changed `VITE_REDIRECT_URI` to `/auth/signin` | ✅ |
-| No post-logout redirect | Added `post_logout_redirect_uri` to OIDC config | ✅ |
-| Duplicate `createRoot` in `main.tsx` | Removed duplicate (caused `removeChild` DOM error) | ✅ |
-| Debug logging in production | Removed `Log.DEBUG` and `localStorage` hack from `auth-config.tsx` | ✅ |
-| Cognito callback mismatch | Added both `/` and `/auth/signin` to callback_urls | ✅ |
-
-### Files Modified (unpushed commits on main)
-1. `backend/src/main.py` — Added `FixGatewayBody` ASGI middleware (NOT YET DEPLOYED/TESTED)
-2. `backend/handler.py` — Reverted to simple `handler = Mangum(app)` 
-3. `infra/modules/cognito/main.tf` — Added `email_verified`, `phone_number_verified` to `read_attributes`
-4. `infra/environments/dev/main.tf` — Changed callback_urls to include both `/` and `/auth/signin`
-5. `frontend/src/lib/auth-config.tsx` — Cleaned up, removed debug code, added `post_logout_redirect_uri`
-6. `frontend/src/main.tsx` — Fixed duplicate `createRoot`, removed debug logging
-7. `frontend/src/pages/register/SignInPage.tsx` — Deep-link support from `state.from`
-8. `frontend/.env` — Updated `VITE_REDIRECT_URI` to match `/auth/signin`
-9. `.github/workflows/frontend.yml` — Changed `VITE_REDIRECT_URI` and fixed authority domain
-
-### Next Steps (in order)
-
-#### 1. Test the ASGI middleware fix
-The `FixGatewayBody` middleware in `main.py` intercepts the ASGI receive channel and forces empty body bytes on GET/HEAD/DELETE/OPTIONS. Needs to be deployed and tested:
-```bash
-# Package and deploy (same as CI does)
-cd /mnt/c/Users/sotov/OneDrive/Escritorio/cert_app
-rm -rf /tmp/lambda-pkg && mkdir -p /tmp/lambda-pkg/lambda
-cp -r backend/src /tmp/lambda-pkg/lambda/
-cp backend/handler.py /tmp/lambda-pkg/lambda/
-mkdir -p /tmp/lambda-pkg/lambda/.venv/lib/python3.12
-cp -r backend/.venv/lib/python3.12/site-packages /tmp/lambda-pkg/lambda/.venv/lib/python3.12/
-# ... zip and upload to S3, update Lambda, redeploy API Gateway
+**Session pooler (port 5432, IPv4)** — used for DDL bootstrap + full query support:
+```
+[REDACTED — Supabase connection string]
 ```
 
-#### 2. If middleware doesn't work, try:
-- Removing `CORSMiddleware` temporarily to isolate
-- Adding `response_model` None to check if validation is the trigger
-- Checking if FastAPI 0.136.x has a known bug with HTTPBearer + GET requests
-- Trying `fastapi>=0.115.5` (newer patch)
+**Transaction pooler (port 6543)** — recommended for serverless runtime but does NOT support prepared statements or multi-statement DDL. Use only after tables exist and with `statement_cache_size=0`.
 
-#### 3. Push all commits
-```powershell
-git push
-```
+Stored as GitHub Actions secret `DATABASE_URL`, passed to Lambda env via Terraform.
 
-### Environment
-- **Frontend**: CloudFront `d2serffuuhhcig.cloudfront.net`
-- **Backend**: Lambda `cert-app-dev-api` via API Gateway `ljux3dwmr0`
-- **Auth**: Cognito User Pool `us-east-1_W3Ne8RhL8`, Client `3cp84bg1r4ns830bj1vb6fbrqf`
-- **DB**: RDS PostgreSQL `cert-app-dev-db.c2rmas8220rb.us-east-1.rds.amazonaws.com`
-- **S3 backup**: `s3://cert-app-dev-frontend/lambdas/function.zip` (last good Lambda package)
+## Tasks
+
+### A. Terraform Infra Cleanup
+
+- Delete `infra/modules/network/` — VPC, IGW, subnets, NAT, route tables, EIP
+- Delete `infra/modules/rds/` — RDS instance, SG, subnet group, SSM parameter, random_password
+- Edit `infra/modules/backend/main.tf`:
+  - Remove `vpc_config {}` block (lines 77-80)
+  - Remove `aws_security_group.lambda` (lines 101-117)
+  - Remove `variable "vpc_id"` (lines 119-123)
+  - Remove variable `subnet_ids` from `variables.tf`
+  - Slim IAM policy: drop `ec2:*NetworkInterface` and `rds:DescribeDBInstances` statements
+  - Keep `ssm:GetParameter` for Cognito config
+  - Remove `lambda_security_group_id` from `outputs.tf`
+- Edit `infra/environments/dev/main.tf`:
+  - Remove `module "network"` block (lines 45-52)
+  - Remove `module "rds"` block (lines 92-99)
+  - Remove `aws_security_group_rule.rds_ingress_lambda` (lines 102-110)
+  - Remove `subnet_ids` and `vpc_id` from `module "backend"` block
+  - Update `database_url` to use Supabase connection string variable
+  - Add `supabase_database_url` variable
+- `terraform plan` → clean, no VPC/RDS/NAT resources
+
+### B. Supabase Setup (Manual)
+
+- Project created in Supabase dashboard: `fbfdzppjoigufbgfjfzp`
+- PgBouncer enabled on port 6543
+- Connection verified via Supabase SQL editor
+- GitHub Actions secret `DATABASE_URL` added
+
+### C. GitHub Actions Updates
+
+- `backend.yml`:
+  - Already packages `.venv` site-packages ✅ (lines 62-73)
+  - Already uploads to S3 ✅ (line 92)
+  - Already updates Lambda function code ✅ (lines 94-99)
+  - Already smoke tests `/health` ✅ (lines 131-145)
+  - ADD: Set `DATABASE_URL` env var on Lambda (same pattern as ANTHROPIC_API_KEY in lines 104-126)
+  - ADD: Update `CORS_ALLOW_ORIGINS` env var from SSM or secret
+
+### D. Verification
+
+- `terraform apply` → Lambda + API Gateway + Cognito + frontend only
+- `curl /v1/health` → 200
+- Login via CloudFront → `/processes` returns 200
+- Tables created on cold start via `SQLModel.metadata.create_all` in lifespan
+
+## Deferred to Stop 2
+
+- S3 + DynamoDB Terraform state backend
+- Cognito API Gateway authorizer + CORS preflight
+- GitHub Actions OIDC swap
+- Action SHA pinning
+- Frontend reconnection double-check
+
+## Risks
+
+1. **R-1** Lambda zip missing `.venv` site-packages → silently broken deploy (existing issue, already fixed in CI)
+2. **R-2** CORS: ensure `CORS_ALLOW_ORIGINS` set to CloudFront domain
+3. **R-3** Supabase Free pause → first request after 7-day idle takes ~5-10s (accepted)
+4. **R-4** PgBouncer + `create_all` works, but future Alembic migrations must target `:5432`
+5. **R-5** In-code JWT only (no API Gateway authorizer) for now
+6. **R-6** `DATABASE_URL` in Lambda env vars is visible in console — fine for prototype
+
+## Environment (before migration)
+
+- Frontend: CloudFront `d2serffuuhhcig.cloudfront.net`
+- Backend: Lambda `cert-app-dev-api` via API Gateway `ljux3dwmr0`
+- Auth: Cognito User Pool `us-east-1_W3Ne8RhL8`, Client `3cp84bg1r4ns830bj1vb6fbrqf`
+- DB: RDS PostgreSQL `cert-app-dev-db.c2rmas8220rb.us-east-1.rds.amazonaws.com`
+- S3 backup: `s3://cert-app-dev-frontend/lambdas/function.zip`
+
+Last updated: 2026-07-01
+
+---
+
+## Agent Review Summary (2026-07-01)
+
+Four agents reviewed the migration plan before implementation:
+
+| Agent | Verdict | Critical Issues Found |
+|-------|---------|----------------------|
+| **Architect** | ✅ Approve | PgBouncer DDL incompatibility, asyncpg prepared-statements, credential exposure |
+| **Security Auditor** | ⚠️ Conditional | CI credential leak (get-function-configuration), long-lived IAM keys, no APIGW authorizer |
+| **AWS Infra Engineer** | ✅ Go (with fixes) | PgBouncer transaction mode + DDL, Supabase 1-week pause, APIGW 29s timeout |
+| **Terraform Specialist** | ✅ Clean | Empty state (no migration risk), vpc_id in main.tf, dead IAM policies, missing validation |
+
+### Fixes Applied in Tasks A-C
+
+| Fix | Task | Description |
+|-----|------|-------------|
+| Port 5432 (session pooler) | B | Supports DDL/PREPARE — avoids PgBouncer transaction-mode breakage |
+| `statement_cache_size=0` | B | Disables asyncpg prepared-statement cache for PgBouncer compat |
+| `pool_size=1, max_overflow=2` | B | Serverless-friendly pool sizing |
+| `timeout: 15` | B | Handles Supabase cold starts |
+| `pool_recycle=300` | B | Avoids Supabase idle connection limits |
+| Remove CI env var leak | C | Deleted `get-function-configuration` pattern — Terraform sets all env vars |
+| Remove vpc_id from main.tf | A | Was inline in main.tf, not variables.tf |
+| Remove dead IAM policies | A | VpcAccess, RdsDescribe, RdsDatabaseUrlAccess removed |
+| `database_url` required | A | No default `""` — fails at plan time if unset |
+| `validation {}` on database_url | A | Catches misconfigured connection strings |
+| Remove `random` provider | A | Only used by deleted RDS module |
+| Update README | A | Architecture diagram, module table, file structure
