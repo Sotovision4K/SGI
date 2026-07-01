@@ -2,17 +2,13 @@ import json
 import re
 import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from fastapi import Depends
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.adapters.llm.llm_port import LLMPort
-
-if TYPE_CHECKING:
-    pass
-
 
 _PROMPTS_DIR = Path(__file__).parent / "prompts"
 

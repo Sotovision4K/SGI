@@ -196,17 +196,6 @@ async def get_process(
     return _process_to_detail(process, name)
 
 
-@router.delete("/{process_id}", status_code=204)
-async def delete_process(
-    process_id: UUID,
-    current_user: CurrentUserDep,
-    repo: ProcessRepositoryDep,
-) -> None:
-    await _require_process_owner(process_id, repo, current_user)
-    # Slice 1: deletion is a no-op (full lifecycle in Slice 2/3)
-    return None
-
-
 # ---- Findings --------------------------------------------------------------
 
 

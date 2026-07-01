@@ -509,28 +509,7 @@ class TestIdorProcesses:
         assert r.status_code in (403, 404), \
             f"Attacker should NOT access foreign process, got {r.status_code}: {r.text[:200]}"
 
-    def test_delete_foreign_process_blocked(self, client, mock_current_user, attacker_user):
-        """IDOR test: attacker cannot delete another user's process."""
-        process = _make_process_for_owner(mock_current_user["sub"])
-        from src.main import app as fastapi_app
-        from src.routes.processes.routes import get_process_repository
-
-        mock_repo = MagicMock()
-        mock_repo.get_process = AsyncMock(return_value=process)
-
-        old_repo = fastapi_app.dependency_overrides.get(get_process_repository)
-        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
-        old_auth = _override_auth(fastapi_app, attacker_user)
-        try:
-            r = client.delete(f"/processes/{process.id}")
-        finally:
-            _restore_auth(fastapi_app, old_auth)
-            if old_repo is not None:
-                fastapi_app.dependency_overrides[get_process_repository] = old_repo
-            else:
-                fastapi_app.dependency_overrides.pop(get_process_repository, None)
-        assert r.status_code in (403, 404), \
-            f"Attacker should NOT delete foreign process, got {r.status_code}: {r.text[:200]}"
+    
 
     def test_put_findings_on_foreign_process_blocked(self, client, mock_current_user, attacker_user):
         """IDOR test: attacker cannot upsert findings on another user's process."""

@@ -30,12 +30,6 @@ class UserUpdate(BaseModel):
     # NOTE: role field is NOT included - users cannot update their own role
 
 
-class PaginationParams(BaseModel):
-    """Pagination parameters for list endpoints"""
-    skip: int = Field(default=0, ge=0, description="Number of records to skip")
-    limit: int = Field(default=10, ge=1, le=100, description="Number of records to return (max 100)")
-
-
 class UserListResponse(BaseModel):
     """Paginated user list response"""
     items: list[User]
