@@ -1,7 +1,6 @@
 import {
   CognitoIdentityProviderClient,
   SignUpCommand,
-  InitiateAuthCommand,
   ConfirmSignUpCommand,
   ResendConfirmationCodeCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
@@ -50,24 +49,6 @@ function mapCognitoError(error: unknown): string {
   // Log for debugging — never expose raw message to users
   console.error('[Auth]', new Date().toISOString(), msg);
   return 'Error inesperado. Contacta al administrador en soporte@sgipro.com.';
-}
-
-export async function signIn(email: string, password: string): Promise<CognitoAuthResponse> {
-  try {
-    const command = new InitiateAuthCommand({
-      ClientId: COGNITO_CLIENT_ID,
-      AuthFlow: 'USER_PASSWORD_AUTH',
-      AuthParameters: {
-        USERNAME: email,
-        PASSWORD: password,
-      },
-    });
-
-    const data = await client.send(command);
-    return { success: true, data: data.AuthenticationResult };
-  } catch (error) {
-    return { success: false, error: mapCognitoError(error) };
-  }
 }
 
 export async function signUp(
@@ -130,35 +111,10 @@ export async function resendConfirmationCode(email: string): Promise<CognitoAuth
   }
 }
 
-export function isUserNotFoundError(error: string): boolean {
-  return error.includes('UserNotFoundException') || error.includes('User does not exist');
-}
-
-export function isInvalidPasswordError(error: string): boolean {
-  return error.includes('InvalidPasswordException');
-}
-
 export function isUsernameExistsError(error: string): boolean {
   return error.includes('UsernameExistsException');
 }
 
 export function isExpiredCodeError(error: string): boolean {
   return error.includes('ExpiredCodeException');
-}
-
-export function isUnauthorizedAttributeError(error: string): boolean {
-  return error.includes('write unauthorized attribute') ||
-         error.includes('InvalidParameterException');
-}
-
-export function isLimitExceededError(error: string): boolean {
-  return error.includes('LimitExceededException');
-}
-
-export function isCodeMismatchError(error: string): boolean {
-  return error.includes('CodeMismatchException');
-}
-
-export function isNotAuthorizedError(error: string): boolean {
-  return error.includes('NotAuthorizedException');
 }
