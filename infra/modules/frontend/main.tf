@@ -121,35 +121,5 @@ resource "aws_cloudfront_distribution" "main" {
   }
 }
 
-resource "aws_ssm_parameter" "cognito_config" {
-  name        = "/${var.project_name}/${var.environment}/cognito/user-pool-id"
-  type        = "String"
-  value       = var.cognito_user_pool_id
-  description = "Cognito User Pool ID for ${var.environment}"
-
-  tags = {
-    Environment = var.environment
-  }
-}
-
-resource "aws_ssm_parameter" "cognito_client_id" {
-  name        = "/${var.project_name}/${var.environment}/cognito/client-id"
-  type        = "String"
-  value       = var.cognito_web_client_id
-  description = "Cognito Web Client ID for ${var.environment}"
-
-  tags = {
-    Environment = var.environment
-  }
-}
-
-resource "aws_ssm_parameter" "cognito_region" {
-  name        = "/${var.project_name}/${var.environment}/cognito/region"
-  type        = "String"
-  value       = var.aws_region
-  description = "AWS Region for Cognito in ${var.environment}"
-
-  tags = {
-    Environment = var.environment
-  }
-}
+# SSM parameters moved to the Cognito module (data origin).
+# See infra/modules/cognito/main.tf for Cognito-owned SSM parameters.

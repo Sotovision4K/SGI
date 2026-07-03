@@ -24,31 +24,13 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
-resource "aws_iam_role_policy" "lambda_vpc_rds_ssm" {
-  name = "${var.project_name}-${var.environment}-lambda-vpc-rds-ssm"
+resource "aws_iam_role_policy" "lambda_ssm" {
+  name = "${var.project_name}-${var.environment}-lambda-ssm"
   role = aws_iam_role.lambda_exec.id
 
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Sid    = "VpcAccess"
-        Effect = "Allow"
-        Action = [
-          "ec2:DescribeNetworkInterfaces",
-          "ec2:CreateNetworkInterface",
-          "ec2:DeleteNetworkInterface"
-        ]
-        Resource = "*"
-      },
-      {
-        Sid    = "RdsDescribe"
-        Effect = "Allow"
-        Action = [
-          "rds:DescribeDBInstances"
-        ]
-        Resource = "*"
-      },
       {
         Sid    = "SsmGetParameter"
         Effect = "Allow"
@@ -74,11 +56,6 @@ resource "aws_lambda_function" "api" {
   memory_size      = var.memory_size
   timeout          = var.timeout
 
-  vpc_config {
-    subnet_ids         = var.subnet_ids
-    security_group_ids = [aws_security_group.lambda.id]
-  }
-
   environment {
     variables = {
       ENVIRONMENT             = var.environment
@@ -96,30 +73,6 @@ resource "aws_lambda_function" "api" {
     Name        = "${var.project_name}-${var.environment}-api"
     Environment = var.environment
   }
-}
-
-resource "aws_security_group" "lambda" {
-  name        = "${var.project_name}-${var.environment}-lambda-sg"
-  description = "Security group for Lambda function"
-  vpc_id      = var.vpc_id
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name        = "${var.project_name}-${var.environment}-lambda-sg"
-    Environment = var.environment
-  }
-}
-
-variable "vpc_id" {
-  description = "VPC ID for security group"
-  type        = string
-  default     = ""
 }
 
 resource "aws_api_gateway_rest_api" "api" {

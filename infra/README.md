@@ -20,11 +20,12 @@ Terraform infrastructure for SGI Pro application deployment on AWS.
                                                     ┌──────────▼──────────┐
                                                     │     Lambda Function  │
                                                     │    (FastAPI + Mangum)│
+                                                    │     VPC-less         │
                                                     └──────────┬──────────┘
                                                                │
                                                     ┌──────────▼──────────┐
-                                                    │         VPC          │
-                                                    │   (Network Layer)    │
+                                                    │       Supabase       │
+                                                    │   (Postgres + PgB)   │
                                                     └─────────────────────┘
 ```
 
@@ -32,10 +33,9 @@ Terraform infrastructure for SGI Pro application deployment on AWS.
 
 | Module | Description |
 |--------|-------------|
-| `network` | VPC, Subnets, Internet Gateway, Route Tables |
-| `cognito` | User Pool, App Client, Identity Pool |
-| `frontend` | S3 Bucket, CloudFront Distribution, SSM Parameters |
-| `backend` | Lambda Function, API Gateway, IAM Roles |
+| `cognito` | User Pool, App Client, Identity Pool, SSM Parameters |
+| `frontend` | S3 Bucket, CloudFront Distribution |
+| `backend` | Lambda Function (VPC-less), API Gateway, IAM Roles |
 | `iam` | GitHub Actions OIDC Role |
 
 ## Prerequisites
@@ -58,16 +58,21 @@ terraform init
 Edit `terraform.tfvars` with your values:
 
 ```hcl
-aws_region        = "us-east-1"
-environment       = "dev"
-project_name      = "cert-app"
-frontend_origin   = "https://d1234567890.cloudfront.net"
-github_repository = "your-username/cert-app"
+aws_region             = "us-east-1"
+environment            = "dev"
+project_name           = "cert-app"
+github_repository      = "your-username/cert-app"
+supabase_database_url  = "postgresql+asyncpg://postgres.xxx:password@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
+anthropic_api_key      = "sk-ant-api-xxx"
 ```
 
 ### 3. Plan and Apply
 
+Secrets (`supabase_database_url`, `anthropic_api_key`) are passed via environment variables:
+
 ```bash
+export TF_VAR_supabase_database_url="postgresql+asyncpg://..."
+export TF_VAR_anthropic_api_key="sk-ant-api-..."
 terraform plan -out=tfplan
 terraform apply tfplan
 ```
@@ -91,6 +96,8 @@ Add these secrets in GitHub repository settings:
 |--------|-------------|
 | `DEV_AWS_ACCESS_KEY_ID` | AWS Access Key ID |
 | `DEV_AWS_SECRET_ACCESS_KEY` | AWS Secret Access Key |
+| `DATABASE_URL` | Supabase connection string (port 5432, session pooler) |
+| `ANTHROPIC_API_KEY` | Anthropic API key for LLM features |
 
 Or use OIDC (recommended):
 
@@ -146,10 +153,6 @@ infra/
 ├── providers.tf
 ├── variables.tf
 ├── modules/
-│   ├── network/
-│   │   ├── main.tf
-│   │   ├── variables.tf
-│   │   └── outputs.tf
 │   ├── cognito/
 │   │   ├── main.tf
 │   │   ├── variables.tf

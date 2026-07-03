@@ -66,6 +66,7 @@ jobs:
 
           cp -r backend/src .packaged/lambda/
           cp backend/handler.py .packaged/lambda/
+          cp backend/trigger_handler.py .packaged/lambda/
 
           SITE_PKGS="backend/.venv/lib/python3.12/site-packages"
           VENV_DEST=".packaged/lambda/.venv/lib/python3.12"
@@ -98,32 +99,23 @@ jobs:
             --s3-bucket cert-app-dev-frontend \
             --s3-key lambdas/function.zip
 
-      - name: Wait for code update to finish
+      - name: Update Post-Signup Trigger Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name cert-app-dev-post-signup \
+            --s3-bucket cert-app-dev-frontend \
+            --s3-key lambdas/function.zip
+
+      - name: Wait for API Lambda code update to finish
         run: aws lambda wait function-updated --function-name cert-app-dev-api
 
-      - name: Update ANTHROPIC_API_KEY env var
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY not set, skipping env var update"
-            exit 0
-          fi
+      - name: Wait for Trigger Lambda code update to finish
+        run: aws lambda wait function-updated --function-name cert-app-dev-post-signup
 
-          CURRENT_ENV=$(aws lambda get-function-configuration \
-            --function-name cert-app-dev-api \
-            --query 'Environment.Variables' \
-            --output json 2>/dev/null || echo "{}")
-
-          if [ "$CURRENT_ENV" = "null" ] || [ -z "$CURRENT_ENV" ]; then
-            CURRENT_ENV="{}"
-          fi
-
-          UPDATED_ENV=$(echo "$CURRENT_ENV" | jq --arg key "$ANTHROPIC_API_KEY" '. + {ANTHROPIC_API_KEY: $key}')
-
-          aws lambda update-function-configuration \
-            --function-name cert-app-dev-api \
-            --environment "$(echo "$UPDATED_ENV" | jq -c '{Variables: .}')"
+      # NOTE: DATABASE_URL and ANTHROPIC_API_KEY env vars are set by Terraform
+      # via the backend module's environment.variables block. CI only updates
+      # function code. To change these secrets, run `terraform apply` with
+      # the TF_VAR_ variables set.
 
       - name: Wait for Lambda update to propagate
         run: sleep 15

@@ -20,7 +20,20 @@ def handler(event: dict, context: dict) -> dict:
     - Provides built-in credentials management
     - See: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html
     """
-    database_url = os.environ.get("DATABASE_URL")
+    database_url = os.environ.get("DATABASE_URL", "")
+    # Strip SQLAlchemy dialect prefix for raw psycopg connection.
+    # postgresql+asyncpg://... → postgresql://...
+    if "+" in database_url and "://" in database_url:
+        scheme, rest = database_url.split("://", 1)
+        if "+" in scheme:
+            database_url = scheme.split("+")[0] + "://" + rest
+
+    # Enforce SSL for connections over the public internet (defense-in-depth).
+    # Supabase already requires TLS, but this prevents accidental downgrade.
+    if "sslmode" not in database_url:
+        sep = "&" if "?" in database_url else "?"
+        database_url = f"{database_url}{sep}sslmode=require"
+
     trigger_source = event.get("triggerSource", "")
 
     try:
