@@ -58,3 +58,6 @@ awscli_1.18.69-1ubuntu0.20.04.1_all.deb
 unzip_6.0-25ubuntu1.2_amd64.deb
 .opencode/context/fastapi-upgrade.md
 zip_3.0-11build1_amd64.deb
+
+# ── Project documentation (may contain env-specific config) ─────────
+checkpoint.md
