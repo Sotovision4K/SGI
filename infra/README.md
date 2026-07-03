@@ -33,8 +33,8 @@ Terraform infrastructure for SGI Pro application deployment on AWS.
 
 | Module | Description |
 |--------|-------------|
-| `cognito` | User Pool, App Client, Identity Pool |
-| `frontend` | S3 Bucket, CloudFront Distribution, SSM Parameters |
+| `cognito` | User Pool, App Client, Identity Pool, SSM Parameters |
+| `frontend` | S3 Bucket, CloudFront Distribution |
 | `backend` | Lambda Function (VPC-less), API Gateway, IAM Roles |
 | `iam` | GitHub Actions OIDC Role |
 
@@ -61,7 +61,6 @@ Edit `terraform.tfvars` with your values:
 aws_region             = "us-east-1"
 environment            = "dev"
 project_name           = "cert-app"
-frontend_origin        = "https://d1234567890.cloudfront.net"
 github_repository      = "your-username/cert-app"
 supabase_database_url  = "postgresql+asyncpg://postgres.xxx:password@aws-1-us-west-2.pooler.supabase.com:5432/postgres"
 anthropic_api_key      = "sk-ant-api-xxx"

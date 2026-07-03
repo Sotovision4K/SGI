@@ -66,6 +66,7 @@ jobs:
 
           cp -r backend/src .packaged/lambda/
           cp backend/handler.py .packaged/lambda/
+          cp backend/trigger_handler.py .packaged/lambda/
 
           SITE_PKGS="backend/.venv/lib/python3.12/site-packages"
           VENV_DEST=".packaged/lambda/.venv/lib/python3.12"
@@ -98,8 +99,18 @@ jobs:
             --s3-bucket cert-app-dev-frontend \
             --s3-key lambdas/function.zip
 
-      - name: Wait for code update to finish
+      - name: Update Post-Signup Trigger Lambda
+        run: |
+          aws lambda update-function-code \
+            --function-name cert-app-dev-post-signup \
+            --s3-bucket cert-app-dev-frontend \
+            --s3-key lambdas/function.zip
+
+      - name: Wait for API Lambda code update to finish
         run: aws lambda wait function-updated --function-name cert-app-dev-api
+
+      - name: Wait for Trigger Lambda code update to finish
+        run: aws lambda wait function-updated --function-name cert-app-dev-post-signup
 
       # NOTE: DATABASE_URL and ANTHROPIC_API_KEY env vars are set by Terraform
       # via the backend module's environment.variables block. CI only updates

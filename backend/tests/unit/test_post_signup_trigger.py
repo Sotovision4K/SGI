@@ -10,14 +10,18 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 
-def _make_event(email: str = "test@example.com") -> dict:
+def _make_event(email: str = "test@example.com", sub: str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") -> dict:
+    """Return a Cognito PostConfirmation_ConfirmSignUp event matching the real trigger shape.
+    
+    Cognito sends 'sub' inside request.userAttributes as the unique user identifier.
+    """
     return {
         "triggerSource": "PostConfirmation_ConfirmSignUp",
         "request": {
             "userAttributes": {
+                "sub": sub,
                 "email": email,
-                "given_name": "Test",
-                "family_name": "User",
+                "name": "Test User",
                 "custom:govId": "123",
                 "custom:role": "customer",
             },

@@ -42,9 +42,21 @@ jobs:
           USER_POOL_ID=$(aws ssm get-parameter --name /cert-app/dev/cognito/user-pool-id --query Parameter.Value --output text)
           CLIENT_ID=$(aws ssm get-parameter --name /cert-app/dev/cognito/client-id --query Parameter.Value --output text)
           COGNITO_REGION=$(aws ssm get-parameter --name /cert-app/dev/cognito/region --query Parameter.Value --output text)
+          COGNITO_DOMAIN=$(aws ssm get-parameter --name /cert-app/dev/cognito/domain --query Parameter.Value --output text)
           echo "USER_POOL_ID=$USER_POOL_ID" >> $GITHUB_OUTPUT
           echo "CLIENT_ID=$CLIENT_ID" >> $GITHUB_OUTPUT
           echo "COGNITO_REGION=$COGNITO_REGION" >> $GITHUB_OUTPUT
+          echo "COGNITO_DOMAIN=$COGNITO_DOMAIN" >> $GITHUB_OUTPUT
+
+      - name: Get Infrastructure Configuration from SSM
+        id: infra
+        run: |
+          CF_DOMAIN=$(aws ssm get-parameter --name /cert-app/dev/cloudfront/domain --query Parameter.Value --output text)
+          CF_DIST_ID=$(aws ssm get-parameter --name /cert-app/dev/cloudfront/distribution-id --query Parameter.Value --output text)
+          API_ENDPOINT=$(aws ssm get-parameter --name /cert-app/dev/api/endpoint --query Parameter.Value --output text)
+          echo "CF_DOMAIN=$CF_DOMAIN" >> $GITHUB_OUTPUT
+          echo "CF_DIST_ID=$CF_DIST_ID" >> $GITHUB_OUTPUT
+          echo "API_ENDPOINT=$API_ENDPOINT" >> $GITHUB_OUTPUT
 
       - name: Create environment file
         run: |
@@ -53,11 +65,11 @@ jobs:
           VITE_COGNITO_CLIENT_ID=${{ steps.cognito.outputs.CLIENT_ID }}
           VITE_COGNITO_REGION=${{ steps.cognito.outputs.COGNITO_REGION }}
           VITE_COGNITO_AUTHORITY=https://cognito-idp.${{ steps.cognito.outputs.COGNITO_REGION }}.amazonaws.com/${{ steps.cognito.outputs.USER_POOL_ID }}
-          VITE_COGNITO_DOMAIN=${{ vars.COGNITO_DOMAIN }}
-          VITE_REDIRECT_SIGN_IN=https://${{ vars.CF_DOMAIN }}/processes
-          VITE_REDIRECT_SIGN_OUT=https://${{ vars.CF_DOMAIN }}/auth/signin
-          VITE_REDIRECT_URI=https://${{ vars.CF_DOMAIN }}/auth/signin
-          VITE_API_BASE_URL=${{ vars.API_ENDPOINT }}
+          VITE_COGNITO_DOMAIN=${{ steps.cognito.outputs.COGNITO_DOMAIN }}
+          VITE_REDIRECT_SIGN_IN=https://${{ steps.infra.outputs.CF_DOMAIN }}/processes
+          VITE_REDIRECT_SIGN_OUT=https://${{ steps.infra.outputs.CF_DOMAIN }}/auth/signin
+          VITE_REDIRECT_URI=https://${{ steps.infra.outputs.CF_DOMAIN }}/auth/signin
+          VITE_API_BASE_URL=${{ steps.infra.outputs.API_ENDPOINT }}
           EOF
 
       - name: Install dependencies
@@ -107,6 +119,7 @@ jobs:
 
       - name: Create CloudFront invalidation
         run: |
+          CF_DIST_ID=$(aws ssm get-parameter --name /cert-app/dev/cloudfront/distribution-id --query Parameter.Value --output text)
           aws cloudfront create-invalidation \
-            --distribution-id ${{ vars.CF_DISTRIBUTION_ID }} \
+            --distribution-id "$CF_DIST_ID" \
             --paths "/*"

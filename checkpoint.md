@@ -138,3 +138,87 @@ Four agents reviewed the migration plan before implementation:
 | `validation {}` on database_url | A | Catches misconfigured connection strings |
 | Remove `random` provider | A | Only used by deleted RDS module |
 | Update README | A | Architecture diagram, module table, file structure
+
+---
+
+## Session 2 — Local Dev Testing Setup (2026-07-01)
+
+### Goal
+Enable local API testing with Supabase + auth bypass, no Cognito hosted UI needed.
+
+### What was done
+
+| File | Change |
+|------|--------|
+| `backend/src/routes/user/auth.py` | Added `LOCAL_DEV=true` bypass — when set, any non-empty `Bearer` token authenticates as a configurable dev user (returns `sub`, `email`, `name`, `cognito:groups: [Admin]`). Disabled by default in production. |
+| `backend/src/config/settings.py` | `ConfigDict` → `SettingsConfigDict` with `extra="ignore"` — Pydantic BaseSettings no longer rejects `LOCAL_DEV*` env vars as unknown fields. |
+| `backend/src/adapters/db/user_repository.py` | Pool tuned: `pool_size=1`, `max_overflow=2`, `connect_args={"timeout":15,"statement_cache_size":0}`, `pool_recycle=300`. Also done in Session 1. |
+| `backend/docker-compose.yml` | Postgres made optional (`profiles: ["local-db"]`). API service now works standalone with Supabase `DATABASE_URL`. Added `LOCAL_DEV` env vars. `depends_on` uses `required: false`. |
+| `backend/.env` | Reorganized: `LOCAL_DEV*` block first, Supabase `DATABASE_URL` as default (port 5432), Cognito values preserved, local postgres URL commented. |
+| `backend/scripts/local_test.sh` | New — creates company + process + lists both via curl against `localhost:8000`. |
+| `infra/README.md` | Updated architecture diagram (no VPC, shows Supabase), module table (removed network), file structure, tfvars examples, GitHub secrets table. |
+
+### Verified
+
+| Test | Result |
+|------|--------|
+| `terraform validate -json` | `"valid": true, "error_count": 0` |
+| `pytest tests/unit/` (64 tests) | All passing |
+| Supabase `SELECT 1` + `SQLModel.metadata.create_all` | Connection OK, tables `users/company/consultant` created |
+| `handler.handler` import + callable | ✅ |
+| `Settings()` with `LOCAL_DEV*` env vars | ✅ (no validation errors) |
+| Health endpoint `GET /api/v1/health` | 200 `{"status":"healthy"}` |
+
+### How to test
+
+```bash
+# Terminal 1: start backend
+cd backend
+source .env
+.venv/bin/python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+
+# Terminal 2: run test script
+bash backend/scripts/local_test.sh
+
+# Or use docker compose
+docker compose up                          # Supabase only
+docker compose --profile local-db up      # Local postgres
+```
+
+### Test results (equivalent cURL)
+
+```bash
+# Health
+curl http://localhost:8000/api/v1/health
+# → {"status":"healthy","timestamp":"..."}
+
+# Create company (LOCAL_DEV=true → any Bearer token works)
+curl -X POST http://localhost:8000/api/v1/companies \
+  -H "Authorization: Bearer dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"name":"Test Company S.A.","business_type":"manufacturing"}'
+# → {"company_id":"uuid","user_id":"00000000-...","name":"Test Company S.A.",...}
+
+# Create process
+curl -X POST http://localhost:8000/api/v1/processes \
+  -H "Authorization: Bearer dev-token" \
+  -H "Content-Type: application/json" \
+  -d '{"company_id":"<COMPANY_ID>","iso_standard":"iso9001"}'
+# → {"id":"uuid","iso_standard":"iso9001","status":"in_diagnosis",...}
+
+# List both
+curl http://localhost:8000/api/v1/companies -H "Authorization: Bearer dev-token"
+curl http://localhost:8000/api/v1/processes -H "Authorization: Bearer dev-token"
+
+# No auth → 401
+curl -o /dev/null -w "%{http_code}" http://localhost:8000/api/v1/companies
+# → 401
+```
+
+### Next steps
+
+- [ ] Commit all changes to `vpc-less-infra` branch
+- [ ] Set GitHub secrets: `DATABASE_URL`, `ANTHROPIC_API_KEY`
+- [ ] `terraform apply` with `TF_VAR_supabase_database_url` + `TF_VAR_anthropic_api_key`
+- [ ] Verify `/health` on deployed Lambda → deploy frontend → login via CloudFront
+- [ ] Stop 2: Cognito API Gateway authorizer, OIDC swap, state backend

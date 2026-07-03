@@ -10,9 +10,6 @@ aws_region     = "us-east-1"
 environment    = "dev"
 project_name   = "cert-app"
 
-# Frontend origin URL (leave empty for localhost; will be CloudFront URL after first apply)
-frontend_origin = ""  # e.g. "https://d1234567890.cloudfront.net"
-
 # GitHub repository for OIDC role assumption (format: OWNER/REPO)
 github_repository = "OWNER/REPO"
 
@@ -20,5 +17,5 @@ github_repository = "OWNER/REPO"
 anthropic_api_key = "sk-ant-..."
 
 # Optional: override CORS allowed origins (comma-separated).
-# Defaults to frontend_origin if set, otherwise localhost:5173,localhost:3000
+# Defaults to the CloudFront domain if available, otherwise localhost:5173,localhost:3000
 # cors_allow_origins = "https://my-app.example.com,http://localhost:5173"
