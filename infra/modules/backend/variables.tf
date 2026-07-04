@@ -9,12 +9,6 @@ variable "project_name" {
   default     = "cert-app"
 }
 
-variable "subnet_ids" {
-  description = "Subnet IDs for Lambda"
-  type        = list(string)
-  default     = []
-}
-
 variable "memory_size" {
   description = "Lambda memory size in MB"
   type        = number
@@ -39,7 +33,11 @@ variable "database_url" {
   description = "Database connection URL"
   type        = string
   sensitive   = true
-  default     = ""
+
+  validation {
+    condition     = can(regex("^postgresql(\\+asyncpg)?://", var.database_url))
+    error_message = "DATABASE_URL must start with postgresql:// or postgresql+asyncpg://"
+  }
 }
 
 variable "anthropic_api_key" {

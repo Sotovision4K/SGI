@@ -53,8 +53,13 @@ def get_engine(database_url: str):
             database_url, 
             echo=False,  # Disabled in production - prevents sensitive data leakage
             pool_pre_ping=True,  # Verify connections before using them
-            pool_recycle=3600,  # Recycle connections every hour
-            connect_args={"timeout": 5},  # Fail fast if DB unreachable (vs 30s default)
+            pool_size=1,  # Minimal pool for serverless (PgBouncer handles real pooling)
+            max_overflow=2,  # Allow a few extra connections under burst load
+            pool_recycle=300,  # Recycle connections every 5 min (avoids Supabase idle limits)
+            connect_args={
+                "timeout": 15,  # Longer timeout for Supabase cold starts
+                "statement_cache_size": 0,  # Disable asyncpg prepared-statement cache for PgBouncer compatibility
+            },
         )
     return _engine
 

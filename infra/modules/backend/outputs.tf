@@ -22,8 +22,3 @@ output "lambda_function_arn" {
   description = "Lambda function ARN"
   value       = aws_lambda_function.api.arn
 }
-
-output "lambda_security_group_id" {
-  description = "ID of the Lambda security group"
-  value       = aws_security_group.lambda.id
-}

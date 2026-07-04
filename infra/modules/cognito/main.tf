@@ -71,6 +71,10 @@ resource "aws_cognito_user_pool" "main" {
     Environment = var.environment
   }
 
+  lambda_config {
+    post_confirmation = var.post_signup_trigger_arn
+  }
+
   lifecycle {
     # Schema attributes cannot be modified or removed after creation
     ignore_changes = [schema]
@@ -111,6 +115,50 @@ resource "aws_cognito_user_pool_client" "web" {
   read_attributes  = ["email", "email_verified", "phone_number", "phone_number_verified", "name", "custom:role", "custom:govId"]
   write_attributes = ["email", "phone_number", "name", "custom:role", "custom:govId"]
 }
+
+resource "aws_lambda_permission" "post_signup_trigger" {
+  statement_id  = "AllowCognitoInvokePostSignup"
+  action        = "lambda:InvokeFunction"
+  function_name = var.post_signup_trigger_arn
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.main.arn
+}
+
+# ── SSM Parameters (Cognito-owned, data originates here) ─────────────────
+
+resource "aws_ssm_parameter" "user_pool_id" {
+  name        = "/${var.project_name}/${var.environment}/cognito/user-pool-id"
+  type        = "String"
+  value       = aws_cognito_user_pool.main.id
+  description = "Cognito User Pool ID for ${var.environment}"
+  tags = { Environment = var.environment }
+}
+
+resource "aws_ssm_parameter" "web_client_id" {
+  name        = "/${var.project_name}/${var.environment}/cognito/client-id"
+  type        = "String"
+  value       = aws_cognito_user_pool_client.web.id
+  description = "Cognito Web Client ID for ${var.environment}"
+  tags = { Environment = var.environment }
+}
+
+resource "aws_ssm_parameter" "region" {
+  name        = "/${var.project_name}/${var.environment}/cognito/region"
+  type        = "String"
+  value       = data.aws_region.current.name
+  description = "AWS Region for Cognito in ${var.environment}"
+  tags = { Environment = var.environment }
+}
+
+resource "aws_ssm_parameter" "cognito_domain" {
+  name        = "/${var.project_name}/${var.environment}/cognito/domain"
+  type        = "String"
+  value       = aws_cognito_user_pool_domain.main.domain != "" ? "https://${aws_cognito_user_pool_domain.main.domain}.auth.${data.aws_region.current.name}.amazoncognito.com" : ""
+  description = "Cognito Hosted UI domain for ${var.environment}"
+  tags = { Environment = var.environment }
+}
+
+# ── Identity Pool ────────────────────────────────────────────────────────
 
 resource "aws_cognito_identity_pool" "main" {
   identity_pool_name = "${var.project_name}-${var.environment}-identity-pool"

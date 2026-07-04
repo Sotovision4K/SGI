@@ -26,3 +26,9 @@ variable "allowed_oauth_scopes" {
   type        = list(string)
   default     = ["openid", "email", "phone"]
 }
+
+variable "post_signup_trigger_arn" {
+  description = "ARN of the Post-Confirmation trigger Lambda"
+  type        = string
+  default     = ""
+}
