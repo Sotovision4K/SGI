@@ -250,7 +250,6 @@ For each fix, write the test first, then implement.
 - ✅ RDS bootstrap: `SQLModel.metadata.create_all` in `lifespan`
 - ✅ Single env, us-east-1, CloudFront default domain
 - ✅ Add post-deploy `/health` smoke test
-- ✅ RDS sizing: db.t4g.micro, single-AZ
 
 ---
 
