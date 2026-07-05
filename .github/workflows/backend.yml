@@ -7,6 +7,11 @@ on:
   pull_request:
     branches: [main]
     paths: ['backend/**']
+  workflow_dispatch:
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   lint-and-test:
@@ -38,7 +43,7 @@ jobs:
 
   package:
     needs: lint-and-test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     environment: dev
 
     runs-on: ubuntu-latest
