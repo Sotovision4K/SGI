@@ -1,0 +1,14 @@
+.gitignore
+backend\.env.example
+.env
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+dist/
+build/
+.ruff_cache/
+.mypy_cache/
+.coverage
+*.egg-info/
+requirements.txt
