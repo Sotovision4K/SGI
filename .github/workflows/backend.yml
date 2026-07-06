@@ -69,19 +69,18 @@ jobs:
           rm -rf .packaged
           mkdir -p .packaged/lambda
 
+          # Export prod-only requirements from lockfile (no dev, no project itself)
+          cd backend && uv export --no-dev --no-emit-project -o requirements.txt && cd ..
+
+          # Install deps flat into the zip root — Lambda's default sys.path picks them up
+          uv pip install --target .packaged/lambda/ -r backend/requirements.txt
+
           cp -r backend/src .packaged/lambda/
           cp backend/handler.py .packaged/lambda/
           cp backend/trigger_handler.py .packaged/lambda/
 
-          SITE_PKGS="backend/.venv/lib/python3.12/site-packages"
-          VENV_DEST=".packaged/lambda/.venv/lib/python3.12"
-          mkdir -p "$VENV_DEST"
-          cp -r "$SITE_PKGS" "$VENV_DEST/"
-
+          # Cleanup build artifacts
           find .packaged/lambda -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
-          find .packaged/lambda -type d -name "tests" -exec rm -rf {} + 2>/dev/null || true
-          find .packaged/lambda -type d -name ".ruff_cache" -exec rm -rf {} + 2>/dev/null || true
-          find .packaged/lambda -type d -name ".pytest_cache" -exec rm -rf {} + 2>/dev/null || true
           find .packaged/lambda -type f -name "*.pyc" -delete 2>/dev/null || true
 
           cd .packaged/lambda && zip -qr ../function.zip . && cd ../../..
