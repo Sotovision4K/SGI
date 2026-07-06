@@ -3,11 +3,6 @@ import logging
 from datetime import datetime, timezone
 
 
-# Setup CloudWatch logging
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-
-
 def handler(event: dict, context: dict) -> dict:
     """
     AWS Lambda handler for post sign-up trigger.
@@ -28,11 +23,6 @@ def handler(event: dict, context: dict) -> dict:
         if "+" in scheme:
             database_url = scheme.split("+")[0] + "://" + rest
 
-    # Enforce SSL for connections over the public internet (defense-in-depth).
-    # Supabase already requires TLS, but this prevents accidental downgrade.
-    if "sslmode" not in database_url:
-        sep = "&" if "?" in database_url else "?"
-        database_url = f"{database_url}{sep}sslmode=require"
 
     trigger_source = event.get("triggerSource", "")
 
