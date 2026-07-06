@@ -1,7 +1,9 @@
-import os
 import logging
+import os
 from datetime import datetime, timezone
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def handler(event: dict, context: dict) -> dict:
     """
@@ -39,7 +41,7 @@ def handler(event: dict, context: dict) -> dict:
 
             # Use synchronous psycopg3 connection pool or direct connection (more compatible with Lambda)
             import psycopg
-            
+            logger.info(f"Connecting to database: {database_url}")
             with psycopg.connect(database_url) as conn:
                 with conn.cursor() as cur:
                     try:
