@@ -10,12 +10,6 @@ def handler(event: dict, context: dict) -> dict:
     AWS Lambda handler for post sign-up trigger.
     Creates user records in the database after Cognito sign-up confirmation.
     CRITICAL: Uses synchronous psycopg3 instead of deprecated asyncio pattern.
-    
-    NOTE: For production with high volume, consider using RDS Proxy for connection pooling:
-    - RDS Proxy reduces connection overhead for serverless functions
-    - Maintains persistent connections to reduce cold start time
-    - Provides built-in credentials management
-    - See: https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy.html
     """
     database_url = os.environ.get("DATABASE_URL", "")
     # Strip SQLAlchemy dialect prefix for raw psycopg connection.
