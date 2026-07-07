@@ -1,7 +1,6 @@
 import { getStatusMessage } from './error-utils';
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/+$/, '') ?? '';
-const API_VERSION = '/api/v1';
 
 export class ApiError extends Error {
   status: number;
@@ -32,7 +31,7 @@ export interface RequestOptions {
 
 function buildUrl(path: string): string {
   const cleanPath = path.startsWith('/') ? path : `/${path}`;
-  return `${API_BASE_URL}${API_VERSION}${cleanPath}`;
+  return `${API_BASE_URL}${cleanPath}`;
 }
 
 async function parseError(response: Response): Promise<ApiError> {
