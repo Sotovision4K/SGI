@@ -1,6 +1,8 @@
 # AWS Deployment Plan — SGI Pro
 
-This plan covers getting the SGI Pro app (FastAPI backend on Lambda + React/Vite frontend on CloudFront) running on AWS with a real RDS Postgres database. The goal is a working dev environment in `us-east-1` reachable via the CloudFront default domain.
+> ⚠️ **Phase 2 (VPC + RDS) has been superseded** by the Supabase migration plan in [`checkpoint.md`](./checkpoint.md). See branch `vpc-less-infra` for the in-progress migration.
+
+This plan covers getting the SGI Pro app (FastAPI backend on Lambda + React/Vite frontend on CloudFront) running on AWS with VPC-less Lambda, CloudFront frontend, Cognito auth, API Gateway, and Supabase Postgres Free tier. The goal is a working dev environment in `us-east-1` reachable via the CloudFront default domain.
 
 ---
 
@@ -12,8 +14,8 @@ This plan covers getting the SGI Pro app (FastAPI backend on Lambda + React/Vite
 | API Gateway VPC | **Skip for now** | Can be added later if private API endpoint is needed. |
 | Terraform state | **S3 backend + DynamoDB lock table, manual bootstrap script** | Run `scripts/bootstrap-tf-state.sh` once before first `terraform apply`. |
 | Anthropic API key | **GitHub Actions secret → Lambda env var on deploy** | No SSM/Secrets Manager for now. |
-| RDS bootstrap | **Option A: `SQLModel.metadata.create_all` in `lifespan`** | Cold start penalty ~2-5s. Migrate to Alembic before production. |
-| Database | **RDS Postgres db.t4g.micro, single-AZ, 20GB GP3, private subnet** | Free-tier eligible. |
+| RDS bootstrap | **Option A: `SQLModel.metadata.create_all` in `lifespan`** | Cold start penalty ~2-5s. Migrate to Alembic before production. **(Superseded by Supabase)** |
+| Database | **RDS Postgres db.t4g.micro, single-AZ, 20GB GP3, private subnet** | Free-tier eligible. **(Superseded by Supabase)** |
 | Lambda timeout | **120s** (was 30s — LLM calls need it) | |
 | CloudFront | **Default domain only** (no custom domain, no Route53, no ACM) | |
 | Region / env | **us-east-1, single `dev` environment** | |
@@ -80,7 +82,9 @@ This plan covers getting the SGI Pro app (FastAPI backend on Lambda + React/Vite
 # Asserts: lifespan still pings DB on startup (existing behavior)
 ```
 
-#### Phase 2 — Add the database
+#### Phase 2 — Add the database — ⚠️ SUPERSEDED
+
+> **This phase has been superseded.** RDS Postgres has been replaced by Supabase Postgres Free tier in a VPC-less architecture. See [`checkpoint.md`](./checkpoint.md) for the Supabase migration plan and branch `vpc-less-infra` for the in-progress work. Historical content preserved below for reference — do not implement as written.
 
 | # | Task | Files |
 |---|------|-------|
@@ -200,18 +204,21 @@ For each fix, write the test first, then implement.
 ## File Inventory
 
 ### New files (Stop 1)
+
+> **Note:** On the `vpc-less-infra` branch, `infra/modules/rds/` and `infra/modules/network/` are being removed (Supabase VPC-less architecture makes them unnecessary).
+
 - `backend/handler.py`
 - `backend/tests/unit/test_handler.py`
 - `backend/tests/unit/test_main.py`
-- `infra/modules/rds/main.tf`
-- `infra/modules/rds/variables.tf`
-- `infra/modules/rds/outputs.tf`
+- `infra/modules/rds/main.tf` ← removed on `vpc-less-infra`
+- `infra/modules/rds/variables.tf` ← removed on `vpc-less-infra`
+- `infra/modules/rds/outputs.tf` ← removed on `vpc-less-infra`
 
 ### Modified files (Stop 1)
 - `backend/src/main.py` (CORS env, lifespan create_all)
 - `infra/modules/backend/main.tf` (env vars, timeout, VPC config)
 - `infra/modules/backend/variables.tf` (timeout default)
-- `infra/modules/network/main.tf` (private subnets, NAT)
+- `infra/modules/network/main.tf` (private subnets, NAT) ← module removed on `vpc-less-infra`
 - `infra/modules/iam/main.tf` (RDS describe, EC2 network interfaces)
 - `infra/environments/dev/main.tf` (RDS module, Lambda in private subnet)
 - `.github/workflows/backend.yml` (fix zip, env vars, lambda update, smoke test)
@@ -234,7 +241,7 @@ For each fix, write the test first, then implement.
 ## Risks (most important first)
 
 1. **R-1 — Lambda zip without deps.** Current deploy is silently broken. Fix is critical (Phase 1.2).
-2. **R-2 — VPC routing.** If Lambda in private subnet can't reach RDS, all DB calls fail. Architecture must be correct from day one (Phase 2.1-2.4).
+2. **R-2 — VPC routing.** ~~If Lambda in private subnet can't reach RDS, all DB calls fail. Architecture must be correct from day one (Phase 2.1-2.4).~~ **IRRELEVANT** — No VPC routing needed with Supabase (VPC-less Lambda architecture).
 3. **R-3 — Cold start timeout.** 120s is the new limit. Anthropic calls can take 30-60s for long plans. Should be enough, but watch.
 4. **R-4 — CORS blocking frontend.** Without CORS fix, deployed frontend cannot reach API. Deployed app looks like it works but every API call fails.
 5. **R-5 — Cognito Authorizer + CORS preflight.** When you add the authorizer, OPTIONS preflight must still be `NONE` or browsers will block requests. Easy to miss.
@@ -273,4 +280,4 @@ For each fix, write the test first, then implement.
 - Infra: Terraform 1.5+, modules in `infra/modules/`
 - CI: GitHub Actions with OIDC to AWS
 
-Last updated: 2026-06-20
+Last updated: 2026-07-01

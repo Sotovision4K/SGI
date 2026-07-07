@@ -54,13 +54,6 @@ export async function saveFindings(
   });
 }
 
-export async function getPlan(
-  processId: string,
-  { token, signal }: ApiCallOptions,
-): Promise<Plan> {
-  return apiRequest<Plan>(`/processes/${processId}/plan`, { token, signal });
-}
-
 export async function generatePlan(
   processId: string,
   { token, signal }: ApiCallOptions,

@@ -77,23 +77,25 @@ Agent-specific instructions are in `.opencode/agents/` (frontend rules, mockup, 
 
 ## Active Deployment Plan
 
-**Before suggesting infrastructure changes**, read [`DEPLOY_PLAN.md`](./DEPLOY_PLAN.md). The app is being deployed to AWS (FastAPI on Lambda + React on CloudFront + RDS Postgres) and there is a multi-phase plan in progress.
+**Before suggesting infrastructure changes**, read [`DEPLOY_PLAN.md`](./DEPLOY_PLAN.md) and [`checkpoint.md`](./checkpoint.md). The app is being deployed to AWS (FastAPI on Lambda + React on CloudFront + Supabase Postgres) and there is a multi-phase plan in progress.
+
+> **Note:** Phase 2 (VPC + RDS Postgres) has been superseded by a VPC-less architecture using Supabase Postgres Free tier. This migration is in progress on branch `vpc-less-infra`. See [`checkpoint.md`](./checkpoint.md) for the current state.
 
 Quick context:
-- Stack target: AWS us-east-1, single `dev` environment, CloudFront default domain
-- Backend: Lambda (via Mangum) + API Gateway + Cognito Authorizer (in-code JWT kept as defense-in-depth)
-- Database: RDS Postgres db.t4g.micro, private subnet, schema created via `SQLModel.metadata.create_all` in `lifespan`
-- State: S3 + DynamoDB (manual bootstrap via `scripts/bootstrap-tf-state.sh`)
-- Secrets: GitHub Actions → Lambda env vars on deploy (no SSM/Secrets Manager yet)
-- RDS bootstrap: `SQLModel.metadata.create_all` in `lifespan` (migrate to Alembic before production)
+- Stack target: AWS us-east-1, single `dev` environment, CloudFront default domain, Supabase Postgres Free tier
+- Backend: Lambda (via Mangum) + API Gateway (VPC-less, no NAT needed) + Cognito Authorizer (in-code JWT kept as defense-in-depth)
+- Database: Supabase Postgres Free tier (replaces RDS; no VPC, no NAT, no private subnets required)
+- State: S3 + DynamoDB (manual bootstrap, deferred to Stop 2)
+- Secrets: GitHub Actions → Lambda env vars (Terraform-managed)
+- Schema: `SQLModel.metadata.create_all` in `lifespan` (migrate to Alembic before production)
 
-Current state: **Stop 1 not yet started**. Plan is to do Phase 1 (make backend deployable) + Phase 2 (add RDS) first, verify end-to-end, then continue with Phases 3-6 (state backend, Cognito Authorizer, CI hardening, frontend reconnection).
+Current state: **Stop 1 in progress**. Phase 1 (make backend deployable) is partially complete; Phase 2 (database) is being migrated to Supabase on the `vpc-less-infra` branch. Phases 3-6 remain as planned.
 
 Key files to know about:
 - `backend/src/main.py` — FastAPI app, lifespan, CORS
-- `backend/handler.py` — DOES NOT EXIST YET, must be created
+- `backend/handler.py` — Mangum wrapper for Lambda
 - `backend/src/config/settings.py` — Pydantic settings, reads from env
-- `infra/modules/` — Terraform modules (network, cognito, frontend, iam, backend)
+- `infra/modules/` — Terraform modules (cognito, frontend, iam, backend; network and rds migrating to vpc-less-infra)
 - `.github/workflows/backend.yml` — must be updated to call `lambda update-function-code` and add `/health` smoke test
 
 When working on infrastructure, use the [`fastapi`](../.opencode/skills/fastapi/SKILL.md) skill for FastAPI best practices.
