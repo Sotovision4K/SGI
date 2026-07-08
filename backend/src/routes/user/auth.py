@@ -15,7 +15,7 @@ def get_cognito_adapter(settings: SettingsDep) -> CognitoPort:
     """Create and return a CognitoAdapter instance with settings from config."""
     return CognitoAdapter(
         jwks_url=settings.aws_cognito_jwks_url,
-        audience=settings.aws_cognito_client_id,
+        client_id=settings.aws_cognito_client_id,
         issuer=f"https://cognito-idp.{settings.aws_cognito_region}.amazonaws.com/{settings.aws_cognito_user_pool_id}",
     )
 
