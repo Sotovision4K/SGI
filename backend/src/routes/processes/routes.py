@@ -1,8 +1,9 @@
+import re
 from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.finding import Finding
@@ -58,6 +59,7 @@ class ProcessDetailResponse(BaseModel):
     status: str
     created_at: str
     updated_at: str
+    pre_diagnosis: dict[str, Any] = Field(default_factory=dict)
 
 
 class UpsertFindingsRequest(BaseModel):
@@ -124,6 +126,7 @@ def _process_to_detail(process: Process, company_name: str | None) -> ProcessDet
         status=process.status.value,
         created_at=process.created_at.isoformat(),
         updated_at=process.updated_at.isoformat(),
+        pre_diagnosis=process.pre_diagnosis,
     )
 
 
@@ -135,13 +138,37 @@ async def _require_process_owner(
     repo: ProcessRepository,
     current_user: dict,
 ) -> Process:
-    """Fetch a process and verify the current user owns it. Raises 404 or 403."""
+    """Fetch a process and verify the current user owns it. Raises 404 always."""
     process = await repo.get_process(process_id)
-    if process is None:
+    if process is None or str(process.consultant_id) != current_user.get("sub", ""):
         raise HTTPException(status_code=404, detail="Proceso no encontrado")
-    if str(process.consultant_id) != current_user.get("sub", ""):
-        raise HTTPException(status_code=403, detail="No autorizado")
     return process
+
+
+# ---- Pre-diagnosis schemas -----------------------------------------------
+
+_VALID_ANSWER_KEY = re.compile(r"^[a-z][a-z0-9_]{0,99}$")
+_MAX_ANSWER_LENGTH = 2000
+
+class UpdatePreDiagnosisRequest(BaseModel):
+    answers: dict[str, str] = Field(
+        default_factory=dict,
+        description="Pre-diagnosis answers keyed by question ID",
+    )
+
+    @field_validator("answers")
+    @classmethod
+    def validate_answer_keys_and_values(cls, v: dict[str, str]) -> dict[str, str]:
+        for key, value in v.items():
+            if not isinstance(key, str) or not _VALID_ANSWER_KEY.match(key):
+                raise ValueError(f"Clave de respuesta inválida: {key}")
+            if not isinstance(value, str):
+                raise ValueError(f"El valor de '{key}' debe ser texto")
+            if len(value) > _MAX_ANSWER_LENGTH:
+                raise ValueError(
+                    f"El valor de '{key}' excede el límite de {_MAX_ANSWER_LENGTH} caracteres"
+                )
+        return v
 
 
 # ---- Endpoints -------------------------------------------------------------
@@ -255,6 +282,27 @@ async def upsert_findings(
     )
 
 
+# ---- Pre-diagnosis ---------------------------------------------------------
+
+
+@router.put("/{process_id}/pre-diagnosis", response_model=ProcessDetailResponse)
+async def update_pre_diagnosis(
+    process_id: UUID,
+    payload: UpdatePreDiagnosisRequest,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    """Persist pre-diagnosis answers for a process. Requires process ownership."""
+    await _require_process_owner(process_id, repo, current_user)
+    await repo.update_pre_diagnosis(process_id, payload.answers)
+    refreshed = await repo.get_process(process_id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    name = await _hydrate_company_name(refreshed.company_id, settings)
+    return _process_to_detail(refreshed, name)
+
+
 # ---- Plan ------------------------------------------------------------------
 
 
@@ -307,6 +355,7 @@ async def generate_plan(
         raw_plan = await llm.generate_plan(
             iso_standard=process.iso_standard.value,
             findings={"answers": finding.answers, "free_text": finding.free_text},
+            pre_diagnosis=process.pre_diagnosis,
         )
     except Exception as exc:
         raise HTTPException(

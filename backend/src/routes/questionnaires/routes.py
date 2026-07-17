@@ -11,7 +11,7 @@ router = APIRouter(prefix="/questionnaires", tags=["questionnaires"])
 
 _QUESTIONNAIRES_DIR = Path(__file__).parent.parent.parent.parent / "questionnaires"
 
-_VALID_ISO = {"iso9001", "iso14001", "iso45001"}
+_VALID_QUESTIONNAIRES = {"iso9001", "iso14001", "iso45001", "pre_diagnosis"}
 
 
 @router.get("/{iso_standard}")
@@ -19,10 +19,10 @@ async def get_questionnaire(
     iso_standard: str,
     current_user: CurrentUserDep,
 ) -> dict:
-    if iso_standard not in _VALID_ISO:
+    if iso_standard not in _VALID_QUESTIONNAIRES:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Norma ISO no soportada: {iso_standard}. Válidas: {sorted(_VALID_ISO)}",
+            detail=f"Norma ISO no soportada: {iso_standard}. Válidas: {sorted(_VALID_QUESTIONNAIRES)}",
         )
 
     file_path = _QUESTIONNAIRES_DIR / f"{iso_standard}.json"

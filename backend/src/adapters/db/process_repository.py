@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from sqlmodel import SQLModel, Field, select
@@ -15,6 +16,7 @@ class ProcessTable(SQLModel, table=True):
     id: uuid.UUID = Field(primary_key=True)
     consultant_id: uuid.UUID = Field(index=True)
     company_id: uuid.UUID = Field(index=True)
+    pre_diagnosis: str = Field(default="{}")
     iso_standard: str = Field(max_length=20, index=True)
     status: str = Field(max_length=20, default="in_diagnosis", index=True)
     created_at: str
@@ -70,6 +72,7 @@ class ProcessRepository:
                 id=process.id,
                 consultant_id=process.consultant_id,
                 company_id=process.company_id,
+                pre_diagnosis=json.dumps(process.pre_diagnosis, ensure_ascii=False),
                 iso_standard=process.iso_standard.value,
                 status=process.status.value,
                 created_at=process.created_at.isoformat(),
@@ -100,6 +103,17 @@ class ProcessRepository:
             if row is None:
                 raise ValueError("Process not found")
             row.status = status.value
+            row.updated_at = datetime.now(timezone.utc).isoformat()
+            await session.commit()
+
+    async def update_pre_diagnosis(self, process_id: uuid.UUID, answers: dict) -> None:
+        from datetime import datetime, timezone
+        import json
+        async with AsyncSession(self._engine) as session:
+            row = await session.get(ProcessTable, process_id)
+            if row is None:
+                raise ValueError("Process not found")
+            row.pre_diagnosis = json.dumps(answers, ensure_ascii=False)
             row.updated_at = datetime.now(timezone.utc).isoformat()
             await session.commit()
 
@@ -198,10 +212,15 @@ class ProcessRepository:
     @staticmethod
     def _process_to_domain(row: ProcessTable) -> Process:
         from datetime import datetime
+        try:
+            pre_diagnosis = json.loads(row.pre_diagnosis) if row.pre_diagnosis else {}
+        except json.JSONDecodeError:
+            pre_diagnosis = {}
         return Process(
             id=row.id,
             consultant_id=row.consultant_id,
             company_id=row.company_id,
+            pre_diagnosis=pre_diagnosis,
             iso_standard=IsoStandard(row.iso_standard),
             status=ProcessStatus(row.status),
             created_at=datetime.fromisoformat(row.created_at),

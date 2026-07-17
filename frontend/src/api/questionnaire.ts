@@ -1,5 +1,7 @@
 import { apiRequest } from '../lib/api-client';
 
+export type QuestionnaireKey = 'iso9001' | 'iso14001' | 'iso45001' | 'pre_diagnosis';
+
 export type QuestionType = 'text' | 'textarea' | 'select';
 
 export interface Question {
@@ -19,7 +21,7 @@ export interface QuestionGroup {
 }
 
 export interface Questionnaire {
-  iso_standard: 'iso9001' | 'iso14001' | 'iso45001';
+  iso_standard: QuestionnaireKey;
   title: string;
   description: string;
   groups: QuestionGroup[];
@@ -31,7 +33,7 @@ export interface ApiCallOptions {
 }
 
 export async function getQuestionnaire(
-  isoStandard: 'iso9001' | 'iso14001' | 'iso45001',
+  isoStandard: QuestionnaireKey,
   { token, signal }: ApiCallOptions,
 ): Promise<Questionnaire> {
   return apiRequest<Questionnaire>(`/questionnaires/${isoStandard}`, { token, signal });

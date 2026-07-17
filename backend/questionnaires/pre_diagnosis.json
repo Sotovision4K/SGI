@@ -1,0 +1,42 @@
+{
+  "iso_standard": "pre_diagnosis",
+  "title": "Pre-diagnóstico — Perfil de la Empresa",
+  "description": "Cuestionario para entender el contexto y objetivos de certificación de la empresa antes del diagnóstico ISO.",
+  "groups": [
+    {
+      "id": "perfil",
+      "title": "Perfil de la empresa",
+      "clauses": [],
+      "questions": [
+        {"id": "pd_employees", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "required": true, "options": ["1-10", "11-50", "51-250", "más de 250"]},
+        {"id": "pd_business_model", "type": "select", "label": "¿Cuál es el modelo de negocio?", "required": true, "options": ["B2B", "B2C", "B2G", "Mixto"]},
+        {"id": "pd_sector", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: construcción, alimentos, tecnología..."},
+        {"id": "pd_sites", "type": "text", "label": "¿Cuántas sedes tiene y en qué países opera?", "required": true, "placeholder": "Ej: 2 sedes en Colombia"},
+        {"id": "pd_products", "type": "textarea", "label": "¿Cuáles son sus principales productos o servicios?", "required": false, "placeholder": "Describa brevemente..."},
+        {"id": "pd_outsourcing", "type": "select", "label": "¿Subcontrata procesos clave (producción, logística, mantenimiento)?", "required": true, "options": ["Sí", "No", "Parcialmente"]}
+      ]
+    },
+    {
+      "id": "objetivos",
+      "title": "Objetivos de certificación",
+      "clauses": [],
+      "questions": [
+        {"id": "pd_target_date", "type": "select", "label": "¿Para cuándo quieren certificarse?", "required": true, "options": ["Menos de 6 meses", "6-12 meses", "Más de 12 meses"]},
+        {"id": "pd_motivation", "type": "select", "label": "¿Cuál es la principal motivación para certificarse?", "required": true, "options": ["Requisito de cliente", "Obligación legal", "Licitaciones y acceso a mercado", "Mejora interna"]},
+        {"id": "pd_cert_type", "type": "select", "label": "¿Es una primera certificación, una renovación o una nueva norma adicional?", "required": true, "options": ["Primera certificación", "Renovación", "Nueva norma adicional"]},
+        {"id": "pd_scope", "type": "select", "label": "¿El alcance cubre toda la empresa o solo algunas sedes/áreas?", "required": true, "options": ["Toda la empresa", "Alcance parcial"]}
+      ]
+    },
+    {
+      "id": "recursos",
+      "title": "Recursos y restricciones",
+      "clauses": [],
+      "questions": [
+        {"id": "pd_project_lead", "type": "select", "label": "¿Quién liderará el proyecto internamente?", "required": true, "options": ["Persona dedicada", "A tiempo parcial", "Nadie asignado aún"]},
+        {"id": "pd_hours_per_week", "type": "select", "label": "¿Cuántas horas por semana puede dedicar el equipo al proyecto?", "required": true, "options": ["Menos de 5", "5-10", "10-20", "Más de 20"]},
+        {"id": "pd_implementation", "type": "select", "label": "¿Lo implementarán internamente o con consultor externo?", "required": true, "options": ["Internamente", "Con consultor externo", "Mixto"]},
+        {"id": "pd_budget", "type": "select", "label": "¿Cuál es el presupuesto estimado para el proceso de certificación? (COP)", "required": false, "options": ["Menos de $20 millones", "$20-50 millones", "$50-100 millones", "Más de $100 millones", "No definido"]}
+      ]
+    }
+  ]
+}

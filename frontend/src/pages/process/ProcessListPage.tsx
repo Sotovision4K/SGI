@@ -1,9 +1,7 @@
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { Plus, Trash2, Building2, LogOut, FileText } from 'lucide-react';
 import { useProcesses, useDeleteProcess } from '../../hooks/useProcesses';
-import { StartProcessModal } from './StartProcessModal';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { getErrorMessage } from '../../lib/error-utils';
 import type { Process } from '../../api/process';
@@ -26,7 +24,6 @@ export const ProcessListPage = () => {
   const { user, signoutRedirect } = useAuth();
   const { data: processes, isLoading, isError, error, refetch } = useProcesses();
   const deleteProcess = useDeleteProcess();
-  const [showStartModal, setShowStartModal] = useState(false);
 
   const fullName = user?.profile?.name || user?.profile?.email || 'Usuario';
   const email = user?.profile?.email || '';
@@ -84,7 +81,7 @@ export const ProcessListPage = () => {
             <p className="text-text-muted mt-1">Gestiona tus procesos de certificación ISO</p>
           </div>
           <button
-            onClick={() => setShowStartModal(true)}
+            onClick={() => navigate('/processes/new')}
             className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors"
           >
             <Plus className="w-5 h-5" />
@@ -164,7 +161,7 @@ export const ProcessListPage = () => {
               Crea tu primer proceso de certificación para comenzar
             </p>
             <button
-              onClick={() => setShowStartModal(true)}
+              onClick={() => navigate('/processes/new')}
               className="inline-flex items-center gap-2 px-4 py-2 bg-accent text-white rounded-lg font-medium hover:bg-accent/90 transition-colors"
             >
               <Plus className="w-5 h-5" />
@@ -173,8 +170,6 @@ export const ProcessListPage = () => {
           </div>
         )}
       </main>
-
-      {showStartModal && <StartProcessModal onClose={() => setShowStartModal(false)} />}
     </div>
   );
 }

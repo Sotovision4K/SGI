@@ -8,8 +8,6 @@
       "title": "Contexto de la organización",
       "clauses": ["4.1", "4.2"],
       "questions": [
-        { "id": "q_company_size", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "options": ["1-10", "11-50", "51-200", "201-500", "500+"], "required": true },
-        { "id": "q_industry", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: Manufactura, Servicios financieros, Tecnología" },
         { "id": "q_main_processes", "type": "textarea", "label": "¿Cuáles son los principales procesos del negocio?", "required": true, "placeholder": "Describa brevemente los 3-5 procesos clave" },
         { "id": "q_stakeholders", "type": "textarea", "label": "¿Quiénes son las partes interesadas clave (clientes, proveedores, empleados, reguladores)?", "required": false }
       ]

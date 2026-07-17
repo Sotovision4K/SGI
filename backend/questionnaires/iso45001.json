@@ -8,8 +8,6 @@
       "title": "Contexto de la organización",
       "clauses": ["4.1", "4.2"],
       "questions": [
-        { "id": "q_company_size", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "options": ["1-10", "11-50", "51-200", "201-500", "500+"], "required": true },
-        { "id": "q_industry", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: Construcción, Manufactura, Minería, Servicios" },
         { "id": "q_high_risk_activities", "type": "select", "label": "¿La empresa realiza actividades de alto riesgo (trabajo en altura, espacios confinados, maquinaria pesada, químicos)?", "options": ["Sí, varias", "Algunas", "No"], "required": true },
         { "id": "q_workers_involved", "type": "select", "label": "¿Incluye contratistas y subcontratistas en su gestión de SST?", "options": ["Sí, plenamente", "Parcialmente", "No"], "required": true }
       ]

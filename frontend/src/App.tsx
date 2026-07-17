@@ -20,6 +20,7 @@ const DiagnosePage = lazy(() => import('./pages/process/DiagnosePage').then(m =>
 const DocumentsPage = lazy(() => import('./pages/process/DocumentsPage').then(m => ({ default: m.DocumentsPage })));
 const AuditsPage = lazy(() => import('./pages/process/AuditsPage').then(m => ({ default: m.AuditsPage })));
 const IndicatorsPage = lazy(() => import('./pages/process/IndicatorsPage').then(m => ({ default: m.IndicatorsPage })));
+const NewProcessWizardPage = lazy(() => import('./pages/process/NewProcessWizardPage').then(m => ({ default: m.NewProcessWizardPage })));
 
 function LoadingFallback() {
   return (
@@ -50,8 +51,16 @@ function App() {
                   }
                 />
                 <Route
+                  path="/processes/new"
+                  element={
+                    <ProtectedRoute>
+                      <NewProcessWizardPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
                   path="/processes/:processId"
-                  
+
                   element={
                     <ProtectedRoute>
                       <ProcessDetailPage />
