@@ -1,6 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,6 +23,7 @@ class Process(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     consultant_id: uuid.UUID
     company_id: uuid.UUID
+    pre_diagnosis: dict[str, Any] = Field(default_factory=dict)
     iso_standard: IsoStandard
     status: ProcessStatus = ProcessStatus.IN_DIAGNOSIS
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

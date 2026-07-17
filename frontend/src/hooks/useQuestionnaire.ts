@@ -3,7 +3,7 @@ import { getQuestionnaire, type Questionnaire } from '../api/questionnaire';
 import { useApiAuthBridge } from '../lib/use-api-auth';
 
 export function useQuestionnaire(
-  isoStandard: 'iso9001' | 'iso14001' | 'iso45001' | null,
+  isoStandard: string | null,
 ) {
   const { getToken } = useApiAuthBridge();
   return useQuery<Questionnaire>({
