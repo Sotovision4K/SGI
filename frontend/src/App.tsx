@@ -91,6 +91,7 @@ function App() {
                     </ProtectedRoute>
                   }
                 />
+                
                 <Route
                 
                   path="/processes/:processId/indicators"
