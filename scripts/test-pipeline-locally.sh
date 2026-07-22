@@ -17,22 +17,17 @@ echo ""
 echo "=== Step 2: Copy source files ==="
 cp -r backend/src .packaged/lambda/
 cp backend/handler.py .packaged/lambda/
-echo "  src/ and handler.py copied"
+cp backend/trigger_handler.py .packaged/lambda/
+cp backend/alembic.ini .packaged/lambda/
+cp -r backend/migrations .packaged/lambda/
+echo "  src/, handler.py, trigger_handler.py, alembic.ini, and migrations/ copied"
 
 echo ""
-echo "=== Step 3: Copy site-packages ==="
-SITE_PKGS=$(find backend/.venv -type d -name "site-packages" 2>/dev/null | head -1)
-# Preserve relative path structure so Lambda can find packages
-VENV_REL=$(echo "$SITE_PKGS" | sed 's|^backend/||')
-VENV_DEST=".packaged/lambda/${VENV_REL}"
-if [ ! -d "$SITE_PKGS" ]; then
-  echo -e "${RED}ERROR: $SITE_PKGS not found. Run 'uv sync' in backend/ first.${NC}"
-  exit 1
-fi
-mkdir -p "$VENV_DEST"
-cp -r "$SITE_PKGS" "$VENV_DEST/"
-PACKAGE_COUNT=$(ls "$VENV_DEST/site-packages" 2>/dev/null | wc -l)
-echo "  Copied ~$PACKAGE_COUNT packages"
+echo "=== Step 3: Install production dependencies ==="
+cd backend && uv export --no-dev --no-emit-project -o requirements.txt && cd ..
+uv pip install --target .packaged/lambda/ -r backend/requirements.txt
+rm -f backend/requirements.txt
+echo "  Production dependencies installed (no dev packages)"
 
 echo ""
 echo "=== Step 4: Clean build artifacts ==="
@@ -71,23 +66,44 @@ VERIFY=$(python3 -c "
 import zipfile
 with zipfile.ZipFile('.packaged/function.zip', 'r') as zf:
     names = zf.namelist()
-    has_handler = any('handler.py' in n for n in names)
+    has_handler = any(n.endswith('handler.py') for n in names)
+    has_trigger = any('trigger_handler.py' in n for n in names)
     has_fastapi = any('fastapi/__init__.py' in n for n in names)
-    print(f'{int(has_handler)} {int(has_fastapi)} {len(names)}')
+    has_alembic_ini = any('alembic.ini' in n for n in names)
+    has_migration = any('versions/' in n for n in names)
+    print(f'{int(has_handler)} {int(has_trigger)} {int(has_fastapi)} {int(has_alembic_ini)} {int(has_migration)} {len(names)}')
 ")
 HAS_HANDLER=$(echo "$VERIFY" | cut -d' ' -f1)
-HAS_FASTAPI=$(echo "$VERIFY" | cut -d' ' -f2)
-FILE_COUNT=$(echo "$VERIFY" | cut -d' ' -f3)
+HAS_TRIGGER=$(echo "$VERIFY" | cut -d' ' -f2)
+HAS_FASTAPI=$(echo "$VERIFY" | cut -d' ' -f3)
+HAS_ALEMBIC_INI=$(echo "$VERIFY" | cut -d' ' -f4)
+HAS_MIGRATION=$(echo "$VERIFY" | cut -d' ' -f5)
+FILE_COUNT=$(echo "$VERIFY" | cut -d' ' -f6)
 
 if [ "$HAS_HANDLER" = "1" ]; then
   echo -e "${GREEN}  handler.py found in zip${NC}"
 else
   echo -e "${RED}  ERROR: handler.py missing from zip${NC}"
 fi
+if [ "$HAS_TRIGGER" = "1" ]; then
+  echo -e "${GREEN}  trigger_handler.py found in zip${NC}"
+else
+  echo -e "${RED}  ERROR: trigger_handler.py missing from zip${NC}"
+fi
 if [ "$HAS_FASTAPI" = "1" ]; then
   echo -e "${GREEN}  fastapi found in zip (${FILE_COUNT} files total)${NC}"
 else
   echo -e "${RED}  ERROR: fastapi missing from zip${NC}"
+fi
+if [ "$HAS_ALEMBIC_INI" = "1" ]; then
+  echo -e "${GREEN}  alembic.ini found in zip${NC}"
+else
+  echo -e "${RED}  ERROR: alembic.ini missing from zip${NC}"
+fi
+if [ "$HAS_MIGRATION" = "1" ]; then
+  echo -e "${GREEN}  migrations/versions/ found in zip${NC}"
+else
+  echo -e "${RED}  ERROR: migrations/versions/ missing from zip${NC}"
 fi
 
 echo ""
@@ -107,6 +123,15 @@ if aws sts get-caller-identity &>/dev/null; then
 
   echo "  Waiting for code update to finish..."
   aws lambda wait function-updated --function-name cert-app-dev-api
+
+  echo "  Updating Post-Signup Trigger Lambda..."
+  aws lambda update-function-code \
+    --function-name cert-app-dev-post-signup \
+    --s3-bucket cert-app-dev-frontend \
+    --s3-key lambdas/function.zip
+
+  echo "  Waiting for trigger code update to finish..."
+  aws lambda wait function-updated --function-name cert-app-dev-post-signup
 
   echo "  Updating ANTHROPIC_API_KEY env var..."
   ANTHROPIC_KEY="${ANTHROPIC_API_KEY:-}"

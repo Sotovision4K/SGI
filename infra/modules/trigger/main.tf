@@ -45,4 +45,8 @@ resource "aws_lambda_function" "post_signup" {
     Name        = "${var.project_name}-${var.environment}-post-signup"
     Environment = var.environment
   }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
 }

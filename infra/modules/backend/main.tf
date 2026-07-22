@@ -73,6 +73,10 @@ resource "aws_lambda_function" "api" {
     Name        = "${var.project_name}-${var.environment}-api"
     Environment = var.environment
   }
+
+  lifecycle {
+    ignore_changes = [filename, source_code_hash]
+  }
 }
 
 resource "aws_api_gateway_rest_api" "api" {
