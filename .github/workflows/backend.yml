@@ -78,6 +78,9 @@ jobs:
           cp -r backend/src .packaged/lambda/
           cp backend/handler.py .packaged/lambda/
           cp backend/trigger_handler.py .packaged/lambda/
+          # Alembic migration assets (env.py imports from src/, so they must ship)
+          cp backend/alembic.ini .packaged/lambda/
+          cp -r backend/migrations .packaged/lambda/
 
           # Cleanup build artifacts
           find .packaged/lambda -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

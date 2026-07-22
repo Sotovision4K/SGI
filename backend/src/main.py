@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import ValidationError
-from sqlmodel import SQLModel, text
+from sqlmodel import text
 
 from src.config.settings import get_settings
 from src.routes.user.routes import router as users_router
@@ -14,6 +14,7 @@ from src.routes.processes.routes import router as processes_router
 from src.routes.companies.routes import router as companies_router
 from src.routes.questionnaires.routes import router as questionnaires_router
 from src.adapters.db.user_repository import get_engine
+from src.adapters.db.migration import run_migrations
 
 logger = logging.getLogger(__name__)
 
@@ -33,9 +34,8 @@ async def lifespan(app: FastAPI):
         engine = get_engine(settings.database_url)
         async with engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: sync_conn.execute(text("SELECT 1")))
-        # Bootstrap DB schema on first cold start
-        async with engine.begin() as conn:
-            await conn.run_sync(lambda sync_conn: SQLModel.metadata.create_all(sync_conn))
+        # Apply pending Alembic migrations (no-op when the DB is already at head).
+        await run_migrations(settings.database_url)
         logger.info("Database initialized successfully")
     except Exception as e:
         logger.error("Database initialization failed — app starting without DB: %s", e)
