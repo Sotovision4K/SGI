@@ -6,7 +6,7 @@ Tests:
 - lifespan calls SQLModel.metadata.create_all on startup
 - lifespan pings DB on startup
 """
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -63,8 +63,8 @@ class _FakeSyncConn:
         return MagicMock()
 
 
-def test_lifespan_calls_create_all(monkeypatch):
-    """Assert lifespan calls SQLModel.metadata.create_all on startup."""
+def test_lifespan_runs_migrations(monkeypatch):
+    """Assert lifespan runs Alembic migrations on startup and pings DB."""
     monkeypatch.setenv("AWS_COGNITO_USER_POOL_ID", "test")
     monkeypatch.setenv("AWS_COGNITO_CLIENT_ID", "test")
     monkeypatch.setenv("AWS_COGNITO_REGION", "us-east-1")
@@ -91,7 +91,8 @@ def test_lifespan_calls_create_all(monkeypatch):
     mock_engine = MagicMock()
     mock_engine.begin.return_value = mock_engine_ctx
 
-    with patch("src.main.get_engine", return_value=mock_engine):
+    with patch("src.main.get_engine", return_value=mock_engine), \
+         patch("src.main.run_migrations", new=AsyncMock()) as mock_migrations:
         from src.main import lifespan, app
 
         async def run():
@@ -100,21 +101,29 @@ def test_lifespan_calls_create_all(monkeypatch):
 
         asyncio.run(run())
 
-    # We expect 2 run_sync calls: SELECT 1 then create_all
-    assert len(run_sync_calls) == 2, (
-        f"Expected 2 run_sync calls, got {len(run_sync_calls)}"
+    # We expect a single run_sync call: SELECT 1 (migrations run via Alembic)
+    assert len(run_sync_calls) == 1, (
+        f"Expected 1 run_sync call, got {len(run_sync_calls)}"
     )
 
-    # Verify the second lambda contains a call to metadata.create_all
+    # Verify the lambda contains a SELECT 1 ping
     import inspect
-    source = inspect.getsource(run_sync_calls[1])
-    assert "create_all" in source, (
-        f"Second run_sync call should reference create_all. Source: {source}"
+    source = inspect.getsource(run_sync_calls[0])
+    assert "SELECT 1" in source, (
+        f"run_sync call should reference SELECT 1. Source: {source}"
+    )
+
+    # Verify run_migrations was awaited once with the database URL
+    mock_migrations.assert_awaited_once_with(
+        "postgresql+asyncpg://test:test@localhost/test"
     )
 
 
 def test_lifespan_pings_db(monkeypatch):
-    """Assert lifespan still pings DB on startup (SELECT 1)."""
+    """Assert lifespan still pings DB on startup (SELECT 1).
+
+    run_migrations is mocked so real Alembic does not fire in tests.
+    """
     monkeypatch.setenv("AWS_COGNITO_USER_POOL_ID", "test")
     monkeypatch.setenv("AWS_COGNITO_CLIENT_ID", "test")
     monkeypatch.setenv("AWS_COGNITO_REGION", "us-east-1")
@@ -141,7 +150,8 @@ def test_lifespan_pings_db(monkeypatch):
     mock_engine = MagicMock()
     mock_engine.begin.return_value = mock_engine_ctx
 
-    with patch("src.main.get_engine", return_value=mock_engine):
+    with patch("src.main.get_engine", return_value=mock_engine), \
+         patch("src.main.run_migrations", new=AsyncMock()):
         from src.main import lifespan, app
 
         async def run():
@@ -150,7 +160,14 @@ def test_lifespan_pings_db(monkeypatch):
 
         asyncio.run(run())
 
-    # Verify run_sync was called at least twice (SELECT 1 + create_all)
-    assert len(run_sync_calls) >= 2, (
-        f"Expected at least 2 run_sync calls (SELECT 1 + create_all), got {len(run_sync_calls)}"
+    # Verify run_sync was called at least once (SELECT 1)
+    assert len(run_sync_calls) >= 1, (
+        f"Expected at least 1 run_sync call (SELECT 1), got {len(run_sync_calls)}"
+    )
+
+    # Verify the first lambda contains a SELECT 1 ping
+    import inspect
+    source = inspect.getsource(run_sync_calls[0])
+    assert "SELECT 1" in source, (
+        f"run_sync call should reference SELECT 1. Source: {source}"
     )
