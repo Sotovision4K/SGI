@@ -56,7 +56,7 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
       return (
         <select
           {...register(q.id, { required: q.required ? 'Campo requerido' : false })}
-          className="w-full px-3 py-2 border border-border rounded-lg bg-white text-text-main focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+          className="w-full px-3 py-2 border border-app-border rounded-lg bg-white text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent/30 focus:border-app-accent"
         >
           <option value="">Seleccione...</option>
           {q.options?.map((opt) => (
@@ -71,7 +71,7 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
           {...register(q.id, { required: q.required ? 'Campo requerido' : false })}
           placeholder={q.placeholder}
           rows={3}
-          className="w-full px-3 py-2 border border-border rounded-lg bg-white text-text-main focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent resize-y"
+          className="w-full px-3 py-2 border border-app-border rounded-lg bg-white text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent/30 focus:border-app-accent resize-y"
         />
       );
     }
@@ -80,7 +80,7 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
         type="text"
         {...register(q.id, { required: q.required ? 'Campo requerido' : false })}
         placeholder={q.placeholder}
-        className="w-full px-3 py-2 border border-border rounded-lg bg-white text-text-main focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+        className="w-full px-3 py-2 border border-app-border rounded-lg bg-white text-app-text focus:outline-none focus:ring-2 focus:ring-app-accent/30 focus:border-app-accent"
       />
     );
   }
@@ -88,9 +88,9 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
   if (generating) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <Loader2 className="w-12 h-12 text-accent animate-spin mb-4" />
-        <h3 className="text-lg font-semibold text-primary mb-2">Generando plan de acción</h3>
-        <p className="text-text-muted text-sm max-w-md">
+        <Loader2 className="w-12 h-12 text-app-accent animate-spin mb-4" />
+        <h3 className="text-lg font-semibold text-app-text mb-2">Generando plan de acción</h3>
+        <p className="text-app-muted text-sm max-w-md">
           Analizando el diagnóstico y generando un plan personalizado. Esto puede tardar entre 10 y 30 segundos.
         </p>
       </div>
@@ -98,7 +98,7 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
   }
 
   if (isLoading || !questionnaire) {
-    return <div className="text-text-muted text-sm py-12 text-center">Cargando diagnóstico...</div>;
+    return <div className="text-app-muted text-sm py-12 text-center">Cargando diagnóstico...</div>;
   }
 
   if (loadError) {
@@ -114,13 +114,13 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
       {questionnaire.groups.map((group) => (
         <div key={group.id}>
           <div className="flex items-baseline gap-2 mb-3">
-            <h3 className="text-lg font-semibold text-primary">{group.title}</h3>
-            <span className="text-xs text-text-muted">{group.clauses.join(', ')}</span>
+            <h3 className="text-lg font-semibold text-app-text">{group.title}</h3>
+            <span className="text-xs text-app-muted">{group.clauses.join(', ')}</span>
           </div>
           <div className="space-y-4">
             {group.questions.map((q) => (
               <div key={q.id}>
-                <label className="block text-sm font-medium text-text-main mb-1">
+                <label className="block text-sm font-medium text-app-text mb-1">
                   {q.label}
                   {q.required && <span className="text-red-500 ml-1">*</span>}
                 </label>
@@ -138,12 +138,12 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
         </div>
       )}
 
-      <div className="pt-4 border-t border-border flex justify-end">
+      <div className="pt-4 border-t border-app-border flex justify-end">
         <button
           type="button"
           onClick={handleSubmit(onSubmit)}
           disabled={isSubmitting}
-          className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 disabled:opacity-50 flex items-center gap-2"
+          className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 disabled:opacity-50 flex items-center gap-2"
         >
           <Sparkles className="w-4 h-4" />
           Generar Plan

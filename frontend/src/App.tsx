@@ -21,6 +21,11 @@ const DocumentsPage = lazy(() => import('./pages/process/DocumentsPage').then(m 
 const AuditsPage = lazy(() => import('./pages/process/AuditsPage').then(m => ({ default: m.AuditsPage })));
 const IndicatorsPage = lazy(() => import('./pages/process/IndicatorsPage').then(m => ({ default: m.IndicatorsPage })));
 const NewProcessWizardPage = lazy(() => import('./pages/process/NewProcessWizardPage').then(m => ({ default: m.NewProcessWizardPage })));
+const AppLayout = lazy(() => import('./components/layout/AppLayout').then(m => ({ default: m.AppLayout })));
+const CompaniesPage = lazy(() => import('./pages/app/CompaniesPage').then(m => ({ default: m.CompaniesPage })));
+const AuditsOverviewPage = lazy(() => import('./pages/app/AuditsOverviewPage').then(m => ({ default: m.AuditsOverviewPage })));
+const ReportsPage = lazy(() => import('./pages/app/ReportsPage').then(m => ({ default: m.ReportsPage })));
+const SettingsPage = lazy(() => import('./pages/app/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 function LoadingFallback() {
   return (
@@ -42,64 +47,19 @@ function App() {
                 <Route path="/auth/signup" element={<SignUpPage />} />
                 <Route path="/auth/logout" element={<LogoutPage />} />
                 <Route path="/confirm-email" element={<ConfirmEmailPage />} />
-                <Route
-                  path="/processes"
-                  element={
-                    <ProtectedRoute>
-                      <ProcessListPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/processes/new"
-                  element={
-                    <ProtectedRoute>
-                      <NewProcessWizardPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/processes/:processId"
-
-                  element={
-                    <ProtectedRoute>
-                      <ProcessDetailPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/processes/:processId/diagnose"
-                  element={
-                    <ProtectedRoute>
-                      <DiagnosePage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/processes/:processId/documents"
-                  element={
-                    <ProtectedRoute>
-                      <DocumentsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/processes/:processId/audits"
-                  element={
-                    <ProtectedRoute>
-                      <AuditsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                
-                  path="/processes/:processId/indicators"
-                  element={
-                    <ProtectedRoute>
-                      <IndicatorsPage />
-                    </ProtectedRoute>
-                  }
-                />
+                <Route element={<ProtectedRoute><AppLayout /></ProtectedRoute>}>
+                  <Route path="/processes" element={<ProcessListPage />} />
+                  <Route path="/processes/new" element={<NewProcessWizardPage />} />
+                  <Route path="/processes/:processId" element={<ProcessDetailPage />} />
+                  <Route path="/processes/:processId/diagnose" element={<DiagnosePage />} />
+                  <Route path="/processes/:processId/documents" element={<DocumentsPage />} />
+                  <Route path="/processes/:processId/audits" element={<AuditsPage />} />
+                  <Route path="/processes/:processId/indicators" element={<IndicatorsPage />} />
+                  <Route path="/companies" element={<CompaniesPage />} />
+                  <Route path="/audits" element={<AuditsOverviewPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/settings" element={<SettingsPage />} />
+                </Route>
               </Routes>
             </Suspense>
           </ErrorBoundary>

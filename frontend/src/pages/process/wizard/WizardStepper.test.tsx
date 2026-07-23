@@ -26,19 +26,19 @@ describe('WizardStepper', () => {
     // No completed (bg-success) step badges should be present
     expect(container.querySelectorAll('.rounded-full.bg-success').length).toBe(0);
     // Only the active step (step 0) uses the accent badge
-    expect(container.querySelectorAll('.rounded-full.bg-accent').length).toBe(1);
+    expect(container.querySelectorAll( '.rounded-full.bg-app-primary').length).toBe(1);
   });
 
   it('marks steps before current as completed (bg-success badge)', () => {
     const { container } = render(<WizardStepper current={1} steps={STEPS} />);
     // Current === 1 -> exactly one completed step badge (step 0)
     expect(container.querySelectorAll('.rounded-full.bg-success').length).toBe(1);
-    expect(container.querySelectorAll('.rounded-full.bg-accent').length).toBe(1);
+    expect(container.querySelectorAll( '.rounded-full.bg-app-primary').length).toBe(1);
   });
 
   it('marks the active step with the accent badge', () => {
     const { container } = render(<WizardStepper current={2} steps={STEPS} />);
-    expect(container.querySelectorAll('.rounded-full.bg-accent').length).toBe(1);
+    expect(container.querySelectorAll( '.rounded-full.bg-app-primary').length).toBe(1);
     expect(container.querySelectorAll('.rounded-full.bg-success').length).toBe(2);
   });
 

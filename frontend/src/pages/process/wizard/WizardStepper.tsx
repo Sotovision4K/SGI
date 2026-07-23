@@ -21,15 +21,15 @@ export function WizardStepper({ current, steps }: WizardStepperProps) {
                     isCompleted
                       ? 'bg-success text-white'
                       : isActive
-                        ? 'bg-accent text-white'
-                        : 'bg-bg-soft text-text-muted border border-border'
+                        ? 'bg-app-primary text-white'
+                        : 'bg-app-bg text-app-muted border border-app-border'
                   }`}
                 >
                   {isCompleted ? <Check className="w-4 h-4" /> : i + 1}
                 </span>
                 <span
                   className={`text-sm font-medium hidden sm:inline ${
-                    isActive ? 'text-accent' : isCompleted ? 'text-success' : 'text-text-muted'
+                    isActive ? 'text-app-accent' : isCompleted ? 'text-success' : 'text-app-muted'
                   }`}
                 >
                   {label}
@@ -38,7 +38,7 @@ export function WizardStepper({ current, steps }: WizardStepperProps) {
               {i < steps.length - 1 && (
                 <div
                   className={`flex-1 h-0.5 mx-2 ${
-                    isCompleted ? 'bg-success' : isPending ? 'bg-border' : 'bg-border'
+                    isCompleted ? 'bg-success' : isPending ? 'bg-app-border' : 'bg-app-border'
                   }`}
                 />
               )}

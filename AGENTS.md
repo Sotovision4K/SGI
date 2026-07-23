@@ -40,7 +40,7 @@ A pre-commit hook runs lint and typecheck on staged frontend/backend files. Inst
 
 ## Design System
 
-Colors (defined in `tailwind.config.js`):
+### Landing page tokens (`tailwind.config.js` — current)
 
 - Primary: `#0A2540` (dark navy)
 - Accent: `#0066CC` (blue)
@@ -49,6 +49,18 @@ Colors (defined in `tailwind.config.js`):
 - Text-muted: `#5A6478`
 - Bg-soft: `#F7F9FC`
 - Success: `#00875A`
+
+### App page tokens (`app.*` — authenticated pages, added 2026-07)
+
+- `app-primary`: `#0B2A4A` (dark navy — sidebar, buttons, headings)
+- `app-accent`: `#4FC3F7` (sky blue — icons, accents, progress)
+- `app-bg`: `#F4F7FA` (page background)
+- `app-text`: `#1E2A3A` (primary text)
+- `app-muted`: `#7A8A9A` (secondary text/labels)
+- `app-sidebar-link`: `#B0C4DE` (sidebar inactive links)
+- `app-border`: `#E8EDF4` (borders/dividers)
+- Status: `status-{in-progress,completed,pending,review}-bg` / `*-text`
+- Layout: `components/layout/AppLayout.tsx` + `Sidebar.tsx` (nav sidebar)
 
 ## Architecture Notes
 

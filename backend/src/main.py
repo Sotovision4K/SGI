@@ -48,6 +48,7 @@ def _parse_cors_origins(raw: str | None) -> list[str]:
         return ["http://localhost:5173", "http://localhost:3000"]
     return [o.strip() for o in raw.split(",") if o.strip()]
 
+
 app = FastAPI(
     title="SGI Pro API",
     description="Backend API for SGI Pro - ISO Management System Certification Tool",

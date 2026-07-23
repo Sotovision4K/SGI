@@ -15,28 +15,28 @@ function TaskCard({ task, defaultExpanded }: { task: PlanTask; defaultExpanded: 
   const Icon = style.icon;
 
   return (
-    <div className="border border-border rounded-lg overflow-hidden">
+    <div className="border border-app-border rounded-lg overflow-hidden">
       <button
         type="button"
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-bg-soft transition-colors"
+        className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-app-bg transition-colors"
       >
-        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-accent-light text-accent text-xs font-bold flex items-center justify-center">
+        <span className="flex-shrink-0 w-6 h-6 rounded-full bg-app-accent/10 text-app-accent text-xs font-bold flex items-center justify-center">
           {task.sort_order + 1}
         </span>
-        <span className="flex-1 font-medium text-text-main">{task.title}</span>
+        <span className="flex-1 font-medium text-app-text">{task.title}</span>
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold ${style.bg} ${style.text}`}>
           <Icon className="w-3 h-3" />
           {style.label}
         </span>
-        {expanded ? <ChevronUp className="w-4 h-4 text-text-muted" /> : <ChevronDown className="w-4 h-4 text-text-muted" />}
+        {expanded ? <ChevronUp className="w-4 h-4 text-app-muted" /> : <ChevronDown className="w-4 h-4 text-app-muted" />}
       </button>
       {expanded && (
-        <div className="px-4 pb-4 pt-2 border-t border-border bg-bg-soft space-y-2">
+        <div className="px-4 pb-4 pt-2 border-t border-app-border bg-app-bg space-y-2">
           {task.description && (
-            <p className="text-sm text-text-main whitespace-pre-wrap">{task.description}</p>
+            <p className="text-sm text-app-text whitespace-pre-wrap">{task.description}</p>
           )}
-          <div className="flex flex-wrap gap-3 text-xs text-text-muted pt-2">
+          <div className="flex flex-wrap gap-3 text-xs text-app-muted pt-2">
             {task.estimated_effort && (
               <span className="inline-flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -62,14 +62,14 @@ export function PlanResultView({ plan }: { plan: Plan }) {
   return (
     <div className="space-y-6">
       <div>
-        <h3 className="text-lg font-semibold text-primary mb-3">Resumen ejecutivo</h3>
-        <div className="prose prose-sm max-w-none text-text-main bg-bg-soft rounded-lg p-4 border border-border">
+        <h3 className="text-lg font-semibold text-app-text mb-3">Resumen ejecutivo</h3>
+        <div className="prose prose-sm max-w-none text-app-text bg-app-bg rounded-lg p-4 border border-app-border">
           {plan.summary_md ? (
             <ReactMarkdown
               components={{
-                h1: ({ children }) => <h1 className="text-xl font-bold mb-2 text-primary">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-2 text-primary">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-1 text-primary">{children}</h3>,
+                h1: ({ children }) => <h1 className="text-xl font-bold mb-2 text-app-text">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-2 text-app-text">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-1 text-app-text">{children}</h3>,
                 p: ({ children }) => <p className="mb-2 leading-relaxed">{children}</p>,
                 ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
                 ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
@@ -80,15 +80,15 @@ export function PlanResultView({ plan }: { plan: Plan }) {
               {plan.summary_md}
             </ReactMarkdown>
           ) : (
-            <p className="text-text-muted italic">El LLM no generó un resumen.</p>
+            <p className="text-app-muted italic">El LLM no generó un resumen.</p>
           )}
         </div>
       </div>
 
       <div>
-        <h3 className="text-lg font-semibold text-primary mb-3">
+        <h3 className="text-lg font-semibold text-app-text mb-3">
           Plan de acción
-          <span className="ml-2 text-sm font-normal text-text-muted">
+          <span className="ml-2 text-sm font-normal text-app-muted">
             ({sortedTasks.length} tareas)
           </span>
         </h3>

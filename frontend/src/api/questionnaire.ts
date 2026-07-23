@@ -2,7 +2,7 @@ import { apiRequest } from '../lib/api-client';
 
 export type QuestionnaireKey = 'iso9001' | 'iso14001' | 'iso45001' | 'pre_diagnosis';
 
-export type QuestionType = 'text' | 'textarea' | 'select';
+export type QuestionType = 'text' | 'textarea' | 'select' | 'cards' | 'chips';
 
 export interface Question {
   id: string;
