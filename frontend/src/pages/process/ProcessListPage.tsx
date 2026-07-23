@@ -58,7 +58,7 @@ export const ProcessListPage = () => {
         </button>
       </div>
 
-      <StatCards processes={safeProcesses} />
+      <StatCards processes={processes ?? []} />
 
       {isError && (
         <ErrorState
@@ -74,11 +74,11 @@ export const ProcessListPage = () => {
         </div>
       )}
 
-      {!isLoading && !isError && safeProcesses.length === 0 && (
+      {!isLoading && !isError && (processes ?? []).length === 0 && (
         <EmptyState onCreateProcess={() => navigate('/processes/new')} />
       )}
 
-      {!isLoading && !isError && safeProcesses.length > 0 && (
+      {!isLoading && !isError && (processes ?? []).length > 0 && (
         <div>
           <ProcessFilters
             isoFilter={isoFilter}
@@ -97,7 +97,7 @@ export const ProcessListPage = () => {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
-        <ActivityWidget processes={safeProcesses} />
+        <ActivityWidget processes={processes ?? []} />
         <CompaniesWidget
           companies={companies}
           navigateToNewProcess={() => navigate('/processes/new')}
