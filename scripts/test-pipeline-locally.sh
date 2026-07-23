@@ -96,14 +96,10 @@ if aws sts get-caller-identity &>/dev/null; then
   echo "  AWS credentials detected. Running upload + update..."
   echo ""
 
-  echo "  Uploading to S3..."
-  aws s3 cp .packaged/function.zip s3://cert-app-dev-frontend/lambdas/function.zip
-
-  echo "  Updating Lambda..."
+  echo "  Deploying to Lambda..."
   aws lambda update-function-code \
     --function-name cert-app-dev-api \
-    --s3-bucket cert-app-dev-frontend \
-    --s3-key lambdas/function.zip
+    --zip-file fileb://.packaged/function.zip
 
   echo "  Waiting for code update to finish..."
   aws lambda wait function-updated --function-name cert-app-dev-api
