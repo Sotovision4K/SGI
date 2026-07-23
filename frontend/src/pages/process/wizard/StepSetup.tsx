@@ -5,6 +5,8 @@ import { useCompanies } from '../../../hooks/useCompanies';
 import { useStartProcess } from '../../../hooks/useStartProcess';
 import { createCompany } from '../../../api/company';
 import { useApiAuthBridge } from '../../../lib/use-api-auth';
+import { SelectNative } from '../../../components/ui/Select';
+import { Input } from '../../../components/ui/Input';
 
 type ISOStandard = 'iso9001' | 'iso14001' | 'iso45001';
 
@@ -90,18 +92,17 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
   return (
     <div className="space-y-6">
       <div>
-        <label className="block text-sm font-semibold text-text-main mb-2">Empresa</label>
+        <label className="block text-sm font-semibold text-app-text mb-2">Empresa</label>
         {companiesLoading ? (
-          <div className="text-text-muted text-sm">Cargando empresas...</div>
+          <div className="text-app-muted text-sm">Cargando empresas...</div>
         ) : companies.length === 0 && !showCreateCompany ? (
-          <div className="text-text-muted text-sm">
+          <div className="text-app-muted text-sm">
             No hay empresas registradas. Crea una nueva para continuar.
           </div>
         ) : (
-          <select
+          <SelectNative
             {...register('company_id', { required: 'Seleccione una empresa' })}
             disabled={showCreateCompany}
-            className="w-full px-3 py-2 border border-border rounded-lg bg-white text-text-main focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent disabled:bg-bg-soft"
           >
             <option value="">Seleccione una empresa...</option>
             {companies.map((c) => (
@@ -109,7 +110,7 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
                 {c.name || '(sin nombre)'} - {c.business_type}
               </option>
             ))}
-          </select>
+          </SelectNative>
         )}
         {errors.company_id && <p className="text-red-500 text-xs mt-1">{errors.company_id.message}</p>}
 
@@ -117,21 +118,17 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
           <button
             type="button"
             onClick={() => setShowCreateCompany(true)}
-            className="mt-2 text-sm text-accent hover:underline"
+            className="mt-2 text-sm text-app-accent hover:underline"
           >
             + Crear nueva empresa
           </button>
         ) : (
-          <div className="mt-3 p-4 border border-border rounded-lg bg-bg-soft space-y-3">
-            <input
+          <div className="mt-3 p-4 border border-app-border rounded-lg bg-app-bg space-y-3">
+            <Input
               {...register('new_company_name', { required: 'Ingrese el nombre' })}
               placeholder="Nombre de la empresa"
-              className="w-full px-3 py-2 border border-border rounded-lg bg-white text-text-main"
             />
-            <select
-              {...register('new_company_type')}
-              className="w-full px-3 py-2 border border-border rounded-lg bg-white text-text-main"
-            >
+            <SelectNative {...register('new_company_type')}>
               <option value="general">General</option>
               <option value="manufactura">Manufactura</option>
               <option value="servicios">Servicios</option>
@@ -139,20 +136,20 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
               <option value="construccion">Construcción</option>
               <option value="alimentos">Alimentos</option>
               <option value="salud">Salud</option>
-            </select>
+            </SelectNative>
             <div className="flex gap-2">
               <button
                 type="button"
                 onClick={handleSubmit(handleCreateCompany)}
                 disabled={creatingCompany}
-                className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 disabled:opacity-50"
+                className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 disabled:opacity-50"
               >
                 {creatingCompany ? 'Creando...' : 'Crear'}
               </button>
               <button
                 type="button"
                 onClick={() => { setShowCreateCompany(false); }}
-                className="px-4 py-2 border border-border rounded-lg text-sm"
+                className="px-4 py-2 border border-app-border rounded-lg text-sm"
               >
                 Cancelar
               </button>
@@ -162,13 +159,13 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
       </div>
 
       <div>
-        <label className="block text-sm font-semibold text-text-main mb-2">Norma ISO</label>
+        <label className="block text-sm font-semibold text-app-text mb-2">Norma ISO</label>
         <div className="space-y-2">
           {ISO_OPTIONS.map((opt) => (
             <label
               key={opt.value}
               className={`flex items-start gap-3 p-4 border rounded-lg cursor-pointer transition-colors ${
-                selectedIso === opt.value ? 'border-accent bg-accent-light' : 'border-border hover:border-accent/50'
+                selectedIso === opt.value ? 'border-app-accent bg-app-accent/10' : 'border-app-border hover:border-app-accent/50'
               }`}
             >
               <input
@@ -178,8 +175,8 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
                 className="mt-1"
               />
               <div>
-                <div className="font-semibold text-text-main">{opt.label}</div>
-                <div className="text-sm text-text-muted">{opt.description}</div>
+                <div className="font-semibold text-app-text">{opt.label}</div>
+                <div className="text-sm text-app-muted">{opt.description}</div>
               </div>
             </label>
           ))}
@@ -194,12 +191,12 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
         </div>
       )}
 
-      <div className="pt-4 border-t border-border flex justify-end">
+      <div className="pt-4 border-t border-app-border flex justify-end">
         <button
           type="button"
           onClick={handleSubmit(onSubmit)}
           disabled={!canSubmit}
-          className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 disabled:opacity-50 flex items-center gap-2"
+          className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 disabled:opacity-50 flex items-center gap-2"
         >
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
           Continuar

@@ -28,6 +28,14 @@
       ]
     },
     {
+      "id": "madurez",
+      "title": "Madurez del sistema de gestión",
+      "clauses": [],
+      "questions": [
+        {"id": "pd_maturity", "type": "cards", "label": "¿Cuál es el nivel de madurez actual del sistema de gestión en la empresa?", "required": true, "options": ["Básico", "Intermedio", "Avanzado"]}
+      ]
+    },
+    {
       "id": "recursos",
       "title": "Recursos y restricciones",
       "clauses": [],
@@ -36,6 +44,25 @@
         {"id": "pd_hours_per_week", "type": "select", "label": "¿Cuántas horas por semana puede dedicar el equipo al proyecto?", "required": true, "options": ["Menos de 5", "5-10", "10-20", "Más de 20"]},
         {"id": "pd_implementation", "type": "select", "label": "¿Lo implementarán internamente o con consultor externo?", "required": true, "options": ["Internamente", "Con consultor externo", "Mixto"]},
         {"id": "pd_budget", "type": "select", "label": "¿Cuál es el presupuesto estimado para el proceso de certificación? (COP)", "required": false, "options": ["Menos de $20 millones", "$20-50 millones", "$50-100 millones", "Más de $100 millones", "No definido"]}
+      ]
+    },
+    {
+      "id": "objetivos_estrategicos",
+      "title": "Objetivos estratégicos",
+      "clauses": [],
+      "questions": [
+        {"id": "pd_objectives", "type": "chips", "label": "Seleccione los objetivos estratégicos de la certificación", "required": false, "options": [
+          "Reducir no conformidades",
+          "Mejorar satisfacción del cliente",
+          "Optimizar procesos internos",
+          "Cumplir requisitos legales",
+          "Reducir riesgos operacionales",
+          "Mejorar cultura de seguridad",
+          "Reducir impacto ambiental",
+          "Aumentar eficiencia energética",
+          "Acceder a nuevos mercados",
+          "Fortalecer reputación"
+        ]}
       ]
     }
   ]

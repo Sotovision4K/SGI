@@ -64,20 +64,21 @@ export function NewProcessWizardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-bg-soft">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-primary">Nuevo Proceso de Certificación</h1>
-          <p className="text-text-muted mt-1">Complete los pasos para iniciar su certificación ISO</p>
-        </div>
+    <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold text-app-text">Nuevo Proceso de Certificación</h1>
+        <p className="text-app-muted mt-1">Complete los pasos para iniciar su certificación ISO</p>
+      </div>
 
-        <WizardStepper current={step} steps={STEPS} />
+      <WizardStepper current={step} steps={STEPS} />
 
-        <div className="bg-white rounded-xl border border-border p-6 shadow-sm min-h-[400px]">
+      <div className="bg-white rounded-xl border border-app-border p-6 shadow-sm min-h-[400px]">
+        <div key={step} className="animate-slide-in-right">
           {step === 0 && <StepSetup onCreated={handleCreated} onDirtyChange={setIsDirty} />}
           {step === 1 && processId && (
             <StepPreDiagnosis
               processId={processId}
+              isoStandard={isoStandard!}
               onDone={handlePreDiagnosisDone}
               onDirtyChange={setIsDirty}
             />
@@ -94,25 +95,25 @@ export function NewProcessWizardPage() {
             <PlanResultView plan={plan} />
           )}
         </div>
-
-        {/* Footer */}
-        <footer className="flex justify-between mt-6">
-          <button
-            onClick={handleExit}
-            className="px-4 py-2 border border-border rounded-lg text-sm font-medium text-text-muted hover:text-text-main hover:bg-bg-soft transition-colors"
-          >
-            {step === 3 ? 'Cerrar' : 'Salir'}
-          </button>
-          {step === 3 && (
-            <button
-              onClick={handleViewProcess}
-              className="px-4 py-2 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent/90 transition-colors"
-            >
-              Ver proceso
-            </button>
-          )}
-        </footer>
       </div>
+
+      {/* Footer */}
+      <footer className="flex justify-between mt-6">
+        <button
+          onClick={handleExit}
+          className="px-4 py-2 border border-app-border rounded-lg text-sm font-medium text-app-muted hover:text-app-text hover:bg-app-bg transition-colors"
+        >
+          {step === 3 ? 'Cerrar' : 'Salir'}
+        </button>
+        {step === 3 && (
+          <button
+            onClick={handleViewProcess}
+            className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors"
+          >
+            Ver proceso
+          </button>
+        )}
+      </footer>
     </div>
   );
 }
