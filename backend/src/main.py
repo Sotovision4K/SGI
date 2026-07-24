@@ -18,6 +18,36 @@ from src.adapters.db.user_repository import get_engine
 logger = logging.getLogger(__name__)
 
 
+# Columns added to the `company` table after initial release. Because
+# SQLModel.metadata.create_all is CREATE-only (never ALTERs existing tables),
+# we apply an idempotent migration here on cold start.
+_COMPANY_CONTACT_COLUMNS = [
+    ("contact_name", "VARCHAR(100)"),
+    ("contact_email", "VARCHAR(255)"),
+    ("contact_phone", "VARCHAR(30)"),
+]
+
+
+async def _ensure_company_contact_columns(conn) -> None:
+    """Add contact_* columns to `company` if missing (idempotent).
+
+    Uses parameterized information_schema lookups so column names are never
+    interpolated into SQL for the existence check.
+    """
+    for col_name, col_type in _COMPANY_CONTACT_COLUMNS:
+        result = await conn.execute(
+            text(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name = 'company' AND column_name = :col"
+            ),
+            {"col": col_name},
+        )
+        if not result.fetchone():
+            await conn.execute(
+                text(f"ALTER TABLE company ADD COLUMN {col_name} {col_type}")
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Ensure settings load — missing env vars or unreachable DB must not
@@ -37,6 +67,16 @@ async def lifespan(app: FastAPI):
         async with engine.begin() as conn:
             await conn.run_sync(lambda sync_conn: SQLModel.metadata.create_all(sync_conn))
         logger.info("Database initialized successfully")
+
+        # Idempotent migration: add contact_* columns if missing (CREATE-only
+        # create_all cannot ALTER existing tables). Wrapped separately so a
+        # migration failure never prevents the app from starting.
+        try:
+            async with engine.begin() as conn:
+                await _ensure_company_contact_columns(conn)
+            logger.info("Company contact columns migration verified")
+        except Exception as mig_err:
+            logger.error("Company contact columns migration failed: %s", mig_err)
     except Exception as e:
         logger.error("Database initialization failed — app starting without DB: %s", e)
     yield

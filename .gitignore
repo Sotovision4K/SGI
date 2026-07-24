@@ -61,3 +61,4 @@ zip_3.0-11build1_amd64.deb
 
 # ── Project documentation (may contain env-specific config) ─────────
 checkpoint.md
+DEPLOY_PLAN.md

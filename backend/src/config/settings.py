@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5"
 
+    # Email / SES (off by default for local dev)
+    ses_sender_email: str = ""
+    email_enabled: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:

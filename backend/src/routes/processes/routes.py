@@ -1,8 +1,9 @@
+import logging
 import re
 from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field, field_validator
 
 from src.config.settings import Settings, get_settings
@@ -10,20 +11,31 @@ from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.adapters.db.process_repository import ProcessRepository
+from src.adapters.db.company_repository import CompanyRepository
 from src.adapters.llm.llm_port import LLMPort
 from src.adapters.llm.anthropic_adapter import get_anthropic_adapter
+from src.adapters.email.email_port import EmailPort
+from src.adapters.email.ses_adapter import get_email_adapter
 from src.routes.user.auth import CurrentUserDep
 
 
 router = APIRouter(prefix="/processes", tags=["processes"])
+
+logger = logging.getLogger(__name__)
 
 
 def get_process_repository(settings: Settings = Depends(get_settings)) -> ProcessRepository:
     return ProcessRepository(settings.database_url)
 
 
+def get_company_repository(settings: Settings = Depends(get_settings)) -> CompanyRepository:
+    return CompanyRepository(settings.database_url)
+
+
 ProcessRepositoryDep = Annotated[ProcessRepository, Depends(get_process_repository)]
+CompanyRepositoryDep = Annotated[CompanyRepository, Depends(get_company_repository)]
 LLMDep = Annotated[LLMPort, Depends(get_anthropic_adapter)]
+EmailDep = Annotated[EmailPort, Depends(get_email_adapter)]
 
 
 # ---- Schemas ---------------------------------------------------------------
@@ -179,13 +191,14 @@ async def list_processes(
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
     settings: Settings = Depends(get_settings),
+    status: str | None = Query(None, enum=["active", "completed"]),
 ) -> ProcessListResponse:
     sub = current_user.get("sub")
     consultant_id = UUID(sub) if sub else None
-    processes = await repo.list_processes(consultant_id=consultant_id)
+    processes = await repo.list_processes(consultant_id=consultant_id, status=status)
     items: list[ProcessListItem] = []
 
-    
+
     for p in processes:
         name = await _hydrate_company_name(p.company_id, settings)
         items.append(_process_to_item(p, name))
@@ -197,6 +210,8 @@ async def create_process(
     payload: CreateProcessRequest,
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
+    company_repo: CompanyRepositoryDep,
+    email_adapter: EmailDep,
     settings: Settings = Depends(get_settings),
 ) -> ProcessDetailResponse:
     sub = current_user.get("sub")
@@ -209,6 +224,21 @@ async def create_process(
     )
     created = await repo.create_process(process)
     name = await _hydrate_company_name(created.company_id, settings)
+
+    # Fire-and-forget welcome email to the company's contact. Errors are
+    # logged and swallowed by the adapter; this never affects the response.
+    try:
+        company = await company_repo.get_company(payload.company_id)
+        contact_email = company.get("contact_email") if company else None
+        if contact_email:
+            await email_adapter.send_welcome_email(
+                to=contact_email,
+                company_name=name or "",
+                iso_standard=created.iso_standard.value,
+            )
+    except Exception as exc:  # noqa: BLE001 — email must never break process creation
+        logger.warning("Welcome email failed for process %s: %s", created.id, exc)
+
     return _process_to_detail(created, name)
 
 
@@ -232,6 +262,47 @@ async def delete_process(
     await _require_process_owner(process_id, repo, current_user)
     # Slice 1: deletion is a no-op (full lifecycle in Slice 2/3)
     return None
+
+
+# ---- Complete / Reopen lifecycle -------------------------------------------
+
+
+@router.post("/{process_id}/complete", response_model=ProcessDetailResponse)
+async def complete_process(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    """Mark a process as COMPLETED. 409 if already completed."""
+    process = await _require_process_owner(process_id, repo, current_user)
+    if process.status == ProcessStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="El proceso ya está completado")
+    await repo.update_process_status(process_id, ProcessStatus.COMPLETED)
+    refreshed = await repo.get_process(process_id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    name = await _hydrate_company_name(refreshed.company_id, settings)
+    return _process_to_detail(refreshed, name)
+
+
+@router.post("/{process_id}/reopen", response_model=ProcessDetailResponse)
+async def reopen_process(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    """Reopen a completed process back to IN_PROGRESS. 409 if not completed."""
+    process = await _require_process_owner(process_id, repo, current_user)
+    if process.status != ProcessStatus.COMPLETED:
+        raise HTTPException(status_code=409, detail="El proceso no está completado")
+    await repo.update_process_status(process_id, ProcessStatus.IN_PROGRESS)
+    refreshed = await repo.get_process(process_id)
+    if refreshed is None:
+        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+    name = await _hydrate_company_name(refreshed.company_id, settings)
+    return _process_to_detail(refreshed, name)
 
 
 # ---- Findings --------------------------------------------------------------

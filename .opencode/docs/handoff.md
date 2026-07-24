@@ -79,14 +79,20 @@ If any of these features are wanted again, they must be **re-implemented on
 
 ## Active Plan Reference
 
-Read [`DEPLOY_PLAN.md`](../../DEPLOY_PLAN.md) before any infra change. We are
-still at "Phase 1: make backend deployable" — that phase is unstarted on
-this clean `main`.
+Read [`DEPLOY_PLAN.md`](../../DEPLOY_PLAN.md) before any infra change.
+**Update (2026-07-23):** deployment is complete and the app is reachable
+end-to-end (VPC-less Lambda + API Gateway + CloudFront + Cognito + Supabase
+Postgres). Only hardening items remain: S3/DynamoDB Terraform state backend,
+Cognito Authorizer on API Gateway, OIDC in workflows, action SHA pinning,
+`infra.yml`. The "Question Answered" and "Deployment To-Do" sections below
+describe the state as of 2026-07-17 and are kept for historical context.
 
 ## Pre-existing Code Smells to Watch (not blockers)
 
 - `StartProcessModal.tsx`: `saveFindings.isPending` / `generatePlan.isPending`
   reference plain async functions, not React Query mutations — `tsc` doesn't
   catch it under current loose checking.
-- `.env` API endpoint (`ljux3dwmr0.execute-api...`) returns HTTP 000 — dead.
-  Will be fixed once Terraform creates a real API Gateway.
+- ~~`.env` API endpoint (`ljux3dwmr0.execute-api...`) returns HTTP 000 — dead.~~
+  **Resolved (2026-07-23):** Terraform has since created the real API Gateway,
+  `frontend/.env` points to a live invoke URL, and the backend CI smoke-tests
+  `/health` on every deploy.

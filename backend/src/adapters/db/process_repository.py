@@ -88,11 +88,25 @@ class ProcessRepository:
             row = await session.get(ProcessTable, process_id)
             return self._process_to_domain(row) if row else None
 
-    async def list_processes(self, consultant_id: uuid.UUID | None = None) -> list[Process]:
+    async def list_processes(
+        self,
+        consultant_id: uuid.UUID | None = None,
+        status: str | None = None,
+    ) -> list[Process]:
+        # Validate the status filter; "active" is a route-level concept that
+        # maps to "everything that is NOT completed" — it is never sent to SQL
+        # as a literal (rule #2).
+        if status not in (None, "active", "completed"):
+            raise ValueError(f"Invalid status filter: {status!r}")
+
         async with AsyncSession(self._engine) as session:
             stmt = select(ProcessTable).order_by(ProcessTable.created_at.desc())
             if consultant_id is not None:
                 stmt = stmt.where(ProcessTable.consultant_id == consultant_id)
+            if status == "active":
+                stmt = stmt.where(ProcessTable.status != ProcessStatus.COMPLETED.value)
+            elif status == "completed":
+                stmt = stmt.where(ProcessTable.status == ProcessStatus.COMPLETED.value)
             rows = (await session.execute(stmt)).scalars().all()
             return [self._process_to_domain(r) for r in rows]
 
