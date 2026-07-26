@@ -76,3 +76,15 @@ variable "cors_allow_origins" {
   type        = string
   default     = ""
 }
+
+variable "ses_sender_email" {
+  description = "Verified SES sender email address for welcome emails"
+  type        = string
+  default     = ""
+}
+
+variable "email_enabled" {
+  description = "Enable welcome email sending via SES"
+  type        = bool
+  default     = false
+}

@@ -23,6 +23,9 @@ class CompanyRepository:
                     "name": r.name or "",
                     "business_type": r.business_type,
                     "is_active": r.is_active,
+                    "contact_name": r.contact_name,
+                    "contact_email": r.contact_email,
+                    "contact_phone": r.contact_phone,
                 }
                 for r in rows
             ]
@@ -38,6 +41,9 @@ class CompanyRepository:
                 "name": row.name or "",
                 "business_type": row.business_type,
                 "is_active": row.is_active,
+                "contact_name": row.contact_name,
+                "contact_email": row.contact_email,
+                "contact_phone": row.contact_phone,
             }
 
     async def create_company(
@@ -46,6 +52,9 @@ class CompanyRepository:
         user_id: uuid.UUID,
         name: str,
         business_type: str,
+        contact_name: str,
+        contact_email: str,
+        contact_phone: str | None = None,
     ) -> dict:
         async with AsyncSession(self._engine) as session:
             row = CompanyTable(
@@ -54,6 +63,9 @@ class CompanyRepository:
                 name=name,
                 business_type=business_type,
                 is_active=True,
+                contact_name=contact_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
             )
             session.add(row)
             await session.commit()
@@ -64,4 +76,7 @@ class CompanyRepository:
                 "name": row.name or "",
                 "business_type": row.business_type,
                 "is_active": row.is_active,
+                "contact_name": row.contact_name,
+                "contact_email": row.contact_email,
+                "contact_phone": row.contact_phone,
             }

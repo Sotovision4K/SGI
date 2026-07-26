@@ -35,7 +35,7 @@ SignUpCommand   ConfirmSignUpCommand       │
 ## Backend
 
 - fastapi 0.136.3
-- Amazon RDS(Postgres Engine)
+- Supabase Postgres (Free tier)
 - uv 
 
 - run the application in docker

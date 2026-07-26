@@ -24,6 +24,13 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
   policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
 }
 
+# NOTE: SES starts in sandbox mode. Until production access is granted,
+# emails can only be sent to verified addresses.
+# Verify recipient addresses in AWS Console > SES > Verified identities.
+resource "aws_sesv2_email_identity" "sender" {
+  email_identity = var.ses_sender_email
+}
+
 resource "aws_iam_role_policy" "lambda_ssm" {
   name = "${var.project_name}-${var.environment}-lambda-ssm"
   role = aws_iam_role.lambda_exec.id
@@ -44,6 +51,21 @@ resource "aws_iam_role_policy" "lambda_ssm" {
     ]
   })
 }
+
+resource "aws_iam_role_policy" "lambda_ses" {
+  name = "${var.project_name}-${var.environment}-lambda-ses"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ses:SendEmail",
+          "ses:SendRawEmail"
+        ]
+        Resource = aws_sesv2_email_identity.sender.arn
 
 resource "aws_lambda_function" "api" {
   function_name = "${var.project_name}-${var.environment}-api"
@@ -66,6 +88,8 @@ resource "aws_lambda_function" "api" {
       AWS_COGNITO_REGION      = var.cognito_region
       AWS_COGNITO_JWKS_URL    = var.cognito_jwks_url
       CORS_ALLOW_ORIGINS      = var.cors_allow_origins
+      SES_SENDER_EMAIL        = var.ses_sender_email
+      EMAIL_ENABLED           = var.email_enabled
     }
   }
 

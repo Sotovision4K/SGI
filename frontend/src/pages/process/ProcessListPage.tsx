@@ -18,12 +18,17 @@ export const ProcessListPage = () => {
   const { data: companies = [] } = useCompanies();
   const deleteProcess = useDeleteProcess();
 
+  const [tab, setTab] = useState<'active' | 'cerrados'>('active');
   const [isoFilter, setIsoFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
+  const activeProcesses = (processes ?? []).filter((p) => p.status !== 'completed');
+  const completedProcesses = (processes ?? []).filter((p) => p.status === 'completed');
+  const sourceForTab = tab === 'active' ? activeProcesses : completedProcesses;
+
   const filtered = useMemo(() => {
-    return (processes ?? []).filter((p) => {
+    return sourceForTab.filter((p) => {
       if (isoFilter && p.iso_standard !== isoFilter) return false;
       if (statusFilter && p.status !== statusFilter) return false;
       if (searchQuery.trim()) {
@@ -34,7 +39,7 @@ export const ProcessListPage = () => {
       }
       return true;
     });
-  }, [processes, isoFilter, statusFilter, searchQuery]);
+  }, [sourceForTab, isoFilter, statusFilter, searchQuery]);
 
   const handleDelete = (id: string) => {
     if (window.confirm('¿Estás seguro de eliminar este proceso?')) {
@@ -80,6 +85,20 @@ export const ProcessListPage = () => {
 
       {!isLoading && !isError && (processes ?? []).length > 0 && (
         <div>
+          <div className="flex items-center gap-0 mb-4 border-b border-app-border">
+            <button
+              onClick={() => setTab('active')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === 'active' ? 'border-app-primary text-app-primary' : 'border-transparent text-app-muted hover:text-app-text'}`}
+            >
+              Activos
+            </button>
+            <button
+              onClick={() => setTab('cerrados')}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === 'cerrados' ? 'border-app-primary text-app-primary' : 'border-transparent text-app-muted hover:text-app-text'}`}
+            >
+              Cerrados
+            </button>
+          </div>
           <ProcessFilters
             isoFilter={isoFilter}
             setIsoFilter={setIsoFilter}
@@ -87,12 +106,19 @@ export const ProcessListPage = () => {
             setStatusFilter={setStatusFilter}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
+            hideStatusFilter={tab === 'cerrados'}
           />
-          <ProcessTable
-            processes={filtered}
-            onView={(id) => navigate(`/processes/${id}`)}
-            onDelete={handleDelete}
-          />
+          {tab === 'cerrados' && filtered.length === 0 ? (
+            <div className="bg-white rounded-xl border border-app-border shadow-sm p-12 text-center text-app-muted">
+              No hay procesos cerrados
+            </div>
+          ) : (
+            <ProcessTable
+              processes={filtered}
+              onView={(id) => navigate(`/processes/${id}`)}
+              onDelete={handleDelete}
+            />
+          )}
         </div>
       )}
 

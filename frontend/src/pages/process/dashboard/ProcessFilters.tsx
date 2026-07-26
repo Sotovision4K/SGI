@@ -9,6 +9,7 @@ interface ProcessFiltersProps {
   setStatusFilter: (v: string) => void;
   searchQuery: string;
   setSearchQuery: (v: string) => void;
+  hideStatusFilter?: boolean;
 }
 
 export function ProcessFilters({
@@ -18,6 +19,7 @@ export function ProcessFilters({
   setStatusFilter,
   searchQuery,
   setSearchQuery,
+  hideStatusFilter = false,
 }: ProcessFiltersProps) {
   return (
     <div className="flex flex-wrap items-center gap-3 mb-4">
@@ -45,18 +47,20 @@ export function ProcessFilters({
         <option value="iso45001">ISO 45001:2018</option>
       </SelectNative>
 
-      <SelectNative
-        value={statusFilter}
-        onChange={(e) => setStatusFilter(e.target.value)}
-        className="w-auto min-w-[160px]"
-        aria-label="Filtrar por estado"
-      >
-        <option value="">Todos los estados</option>
-        <option value="in_diagnosis">En diagnóstico</option>
-        <option value="plan_ready">Plan listo</option>
-        <option value="in_progress">En progreso</option>
-        <option value="completed">Completado</option>
-      </SelectNative>
+      {!hideStatusFilter && (
+        <SelectNative
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="w-auto min-w-[160px]"
+          aria-label="Filtrar por estado"
+        >
+          <option value="">Todos los estados</option>
+          <option value="in_diagnosis">En diagnóstico</option>
+          <option value="plan_ready">Plan listo</option>
+          <option value="in_progress">En progreso</option>
+          <option value="completed">Completado</option>
+        </SelectNative>
+      )}
     </div>
   );
 }

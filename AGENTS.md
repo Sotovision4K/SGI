@@ -89,23 +89,24 @@ Agent-specific instructions are in `.opencode/agents/` (frontend rules, mockup, 
 
 ## Active Deployment Plan
 
-**Before suggesting infrastructure changes**, read [`DEPLOY_PLAN.md`](./DEPLOY_PLAN.md). The app is being deployed to AWS (FastAPI on Lambda + React on CloudFront + RDS Postgres) and there is a multi-phase plan in progress.
+**Before suggesting infrastructure changes**, read [`DEPLOY_PLAN.md`](./DEPLOY_PLAN.md). The app is **deployed and reachable** on AWS (FastAPI on Lambda + React on CloudFront + Supabase Postgres, VPC-less).
 
 Quick context:
-- Stack target: AWS us-east-1, single `dev` environment, CloudFront default domain
-- Backend: Lambda (via Mangum) + API Gateway + Cognito Authorizer (in-code JWT kept as defense-in-depth)
-- Database: RDS Postgres db.t4g.micro, private subnet, schema created via `SQLModel.metadata.create_all` in `lifespan`
-- State: S3 + DynamoDB (manual bootstrap via `scripts/bootstrap-tf-state.sh`)
-- Secrets: GitHub Actions → Lambda env vars on deploy (no SSM/Secrets Manager yet)
-- RDS bootstrap: `SQLModel.metadata.create_all` in `lifespan` (migrate to Alembic before production)
+- Stack: AWS us-east-1, single `dev` environment, CloudFront default domain
+- Backend: Lambda (via Mangum) + API Gateway (`authorization = "NONE"` today; in-code JWT validation in `get_current_user`)
+- Database: **Supabase Postgres (Free tier)** — replaced the original RDS/VPC plan; no VPC, no NAT, no private subnets
+- Schema: `SQLModel.metadata.create_all` in `lifespan` (migrate to Alembic before production; new columns need raw `ALTER TABLE` meanwhile)
+- Secrets: GitHub Actions secrets → Lambda env vars on deploy (`DATABASE_URL`, `ANTHROPIC_API_KEY`, Cognito settings)
+- Terraform state: **local** (`infra/environments/dev/terraform.tfstate`) — S3 + DynamoDB backend still pending
 
-Current state: **Stop 1 not yet started**. Plan is to do Phase 1 (make backend deployable) + Phase 2 (add RDS) first, verify end-to-end, then continue with Phases 3-6 (state backend, Cognito Authorizer, CI hardening, frontend reconnection).
+Current state: **deployment complete**. Pending hardening only: S3/DynamoDB state backend, Cognito Authorizer on API Gateway, OIDC in workflows (long-lived keys in use), action SHA pinning, `infra.yml`. See `DEPLOY_PLAN.md` for details.
 
 Key files to know about:
-- `backend/src/main.py` — FastAPI app, lifespan, CORS
-- `backend/handler.py` — DOES NOT EXIST YET, must be created
+- `backend/src/main.py` — FastAPI app, lifespan (`create_all`), configurable CORS (`CORS_ALLOW_ORIGINS`)
+- `backend/handler.py` — Mangum wrapper for Lambda
+- `backend/trigger_handler.py` — Cognito Post-Confirmation trigger entrypoint
 - `backend/src/config/settings.py` — Pydantic settings, reads from env
-- `infra/modules/` — Terraform modules (network, cognito, frontend, iam, backend)
-- `.github/workflows/backend.yml` — must be updated to call `lambda update-function-code` and add `/health` smoke test
+- `infra/modules/` — Terraform modules: `backend`, `cognito`, `frontend`, `iam`, `trigger` (`network` and `rds` were removed in the VPC-less migration)
+- `.github/workflows/backend.yml` — package → `lambda update-function-code --zip-file` → `/health` smoke test
 
 When working on infrastructure, use the [`fastapi`](../.opencode/skills/fastapi/SKILL.md) skill for FastAPI best practices.

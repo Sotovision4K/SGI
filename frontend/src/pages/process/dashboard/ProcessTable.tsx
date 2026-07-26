@@ -1,4 +1,5 @@
-import { Eye, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { CheckCircle, RotateCcw, Eye, Trash2 } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -8,6 +9,8 @@ import {
   TableCell,
 } from '../../../components/ui/Table';
 import { Badge } from '../../../components/ui/Badge';
+import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
+import { useCompleteProcess, useReopenProcess } from '../../../hooks/useProcesses';
 import type { Process } from '../../../api/process';
 
 interface ProcessTableProps {
@@ -54,8 +57,31 @@ function shortId(id: string): string {
 }
 
 export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps) {
+  const completeProcess = useCompleteProcess();
+  const reopenProcess = useReopenProcess();
+  const [completeTarget, setCompleteTarget] = useState<string | null>(null);
+  const [reopenTarget, setReopenTarget] = useState<string | null>(null);
+
   return (
     <div className="bg-white rounded-xl border border-app-border shadow-sm overflow-hidden">
+      <ConfirmDialog
+        open={!!completeTarget}
+        onOpenChange={(open) => { if (!open) setCompleteTarget(null); }}
+        title="Marcar como completado"
+        description="¿Estás seguro de completar este proceso? Podrás reabrirlo después si es necesario."
+        confirmLabel="Completar"
+        onConfirm={() => { completeProcess.mutate(completeTarget!); setCompleteTarget(null); }}
+        loading={completeProcess.isPending}
+      />
+      <ConfirmDialog
+        open={!!reopenTarget}
+        onOpenChange={(open) => { if (!open) setReopenTarget(null); }}
+        title="Reabrir proceso"
+        description="¿Estás seguro de reabrir este proceso? Volverá al estado anterior."
+        confirmLabel="Reabrir"
+        onConfirm={() => { reopenProcess.mutate(reopenTarget!); setReopenTarget(null); }}
+        loading={reopenProcess.isPending}
+      />
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -106,6 +132,26 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                         <Eye className="w-4 h-4" />
                         Ver
                       </button>
+                      {process.status !== 'completed' && (
+                        <button
+                          onClick={() => setCompleteTarget(process.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-status-completed-text hover:bg-status-completed-bg rounded-md transition-colors"
+                          title="Marcar como completado"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          Completar
+                        </button>
+                      )}
+                      {process.status === 'completed' && (
+                        <button
+                          onClick={() => setReopenTarget(process.id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-app-muted hover:bg-app-bg rounded-md transition-colors"
+                          title="Reabrir proceso"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                          Reabrir
+                        </button>
+                      )}
                       <button
                         onClick={() => onDelete(process.id)}
                         className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"

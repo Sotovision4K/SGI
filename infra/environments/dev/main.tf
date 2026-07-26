@@ -97,6 +97,8 @@ module "backend" {
   cognito_region        = var.aws_region
   cognito_jwks_url      = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.user_pool_id}/.well-known/jwks.json"
   cors_allow_origins    = var.cors_allow_origins != "" ? var.cors_allow_origins : (module.frontend.cloudfront_domain != "" ? "https://${module.frontend.cloudfront_domain}" : "http://localhost:5173,http://localhost:3000")
+  ses_sender_email      = var.ses_sender_email
+  email_enabled         = var.email_enabled
 }
 
 module "iam" {

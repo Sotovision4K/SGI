@@ -3,10 +3,8 @@ import { useForm, useWatch } from 'react-hook-form';
 import { Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { useCompanies } from '../../../hooks/useCompanies';
 import { useStartProcess } from '../../../hooks/useStartProcess';
-import { createCompany } from '../../../api/company';
-import { useApiAuthBridge } from '../../../lib/use-api-auth';
 import { SelectNative } from '../../../components/ui/Select';
-import { Input } from '../../../components/ui/Input';
+import { CompanyForm } from '../../../components/companies/CompanyForm';
 
 type ISOStandard = 'iso9001' | 'iso14001' | 'iso45001';
 
@@ -19,8 +17,6 @@ const ISO_OPTIONS: { value: ISOStandard; label: string; description: string }[] 
 interface FormData {
   company_id: string;
   iso_standard: ISOStandard;
-  new_company_name: string;
-  new_company_type: string;
 }
 
 interface StepSetupProps {
@@ -29,20 +25,16 @@ interface StepSetupProps {
 }
 
 export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
-  const { getToken } = useApiAuthBridge();
   const { data: companies = [], isLoading: companiesLoading } = useCompanies();
   const startProcess = useStartProcess();
   const [error, setError] = useState<string | null>(null);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
-  const [creatingCompany, setCreatingCompany] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const { register, handleSubmit, setValue, control, formState: { errors, isDirty } } = useForm<FormData>({
     defaultValues: {
       company_id: '',
       iso_standard: '' as ISOStandard,
-      new_company_name: '',
-      new_company_type: 'general',
     },
     mode: 'onChange',
   });
@@ -68,24 +60,6 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear el proceso');
       setSubmitting(false);
-    }
-  }
-
-  async function handleCreateCompany(data: FormData) {
-    if (!data.new_company_name.trim()) return;
-    setCreatingCompany(true);
-    setError(null);
-    try {
-      const company = await createCompany(
-        { name: data.new_company_name.trim(), business_type: data.new_company_type },
-        { token: getToken() },
-      );
-      setValue('company_id', company.company_id);
-      setShowCreateCompany(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al crear la empresa');
-    } finally {
-      setCreatingCompany(false);
     }
   }
 
@@ -123,37 +97,16 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
             + Crear nueva empresa
           </button>
         ) : (
-          <div className="mt-3 p-4 border border-app-border rounded-lg bg-app-bg space-y-3">
-            <Input
-              {...register('new_company_name', { required: 'Ingrese el nombre' })}
-              placeholder="Nombre de la empresa"
+          <div className="mt-3 p-4 border border-app-border rounded-lg bg-app-bg">
+            <CompanyForm
+              variant="inline"
+              existingCompanyNames={companies.filter((c) => c.company_id !== selectedCompany).map((c) => c.name)}
+              onSuccess={(company) => {
+                setValue('company_id', company.company_id);
+                setShowCreateCompany(false);
+              }}
+              onCancel={() => setShowCreateCompany(false)}
             />
-            <SelectNative {...register('new_company_type')}>
-              <option value="general">General</option>
-              <option value="manufactura">Manufactura</option>
-              <option value="servicios">Servicios</option>
-              <option value="tecnologia">Tecnología</option>
-              <option value="construccion">Construcción</option>
-              <option value="alimentos">Alimentos</option>
-              <option value="salud">Salud</option>
-            </SelectNative>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={handleSubmit(handleCreateCompany)}
-                disabled={creatingCompany}
-                className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 disabled:opacity-50"
-              >
-                {creatingCompany ? 'Creando...' : 'Crear'}
-              </button>
-              <button
-                type="button"
-                onClick={() => { setShowCreateCompany(false); }}
-                className="px-4 py-2 border border-app-border rounded-lg text-sm"
-              >
-                Cancelar
-              </button>
-            </div>
           </div>
         )}
       </div>

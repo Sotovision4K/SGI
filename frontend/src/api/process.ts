@@ -26,8 +26,14 @@ function isApiError(err: unknown): err is { status: number } {
   return typeof err === 'object' && err !== null && 'status' in err;
 }
 
-export async function getProcesses({ token, signal }: ApiCallOptions): Promise<Process[]> {
-  const data = await apiRequest<{ items: Process[]; total: number }>('/processes', { token, signal });
+export async function getProcesses(
+  { token, signal, status }: ApiCallOptions & { status?: 'active' | 'completed' },
+): Promise<Process[]> {
+  const params = status ? `?status=${status}` : '';
+  const data = await apiRequest<{ items: Process[]; total: number }>(
+    `/processes${params}`,
+    { token, signal },
+  );
   return data.items;
 }
 
@@ -76,6 +82,28 @@ export async function savePreDiagnosis(
   return apiRequest<Process>(`/processes/${processId}/pre-diagnosis`, {
     method: 'PUT',
     body: { answers },
+    token,
+    signal,
+  });
+}
+
+export async function completeProcess(
+  processId: string,
+  { token, signal }: ApiCallOptions,
+): Promise<Process> {
+  return apiRequest<Process>(`/processes/${processId}/complete`, {
+    method: 'POST',
+    token,
+    signal,
+  });
+}
+
+export async function reopenProcess(
+  processId: string,
+  { token, signal }: ApiCallOptions,
+): Promise<Process> {
+  return apiRequest<Process>(`/processes/${processId}/reopen`, {
+    method: 'POST',
     token,
     signal,
   });

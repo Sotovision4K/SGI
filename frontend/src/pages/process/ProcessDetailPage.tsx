@@ -1,6 +1,9 @@
+import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { FileText, ClipboardCheck, BarChart3, ArrowLeft } from 'lucide-react';
+import { FileText, ClipboardCheck, BarChart3, ArrowLeft, CheckCircle, RotateCcw } from 'lucide-react';
 import { useProcess } from '../../hooks/useProcess';
+import { useCompleteProcess, useReopenProcess } from '../../hooks/useProcesses';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { getErrorMessage } from '../../lib/error-utils';
 
@@ -8,6 +11,10 @@ export const ProcessDetailPage = () => {
   const { processId } = useParams();
 
   const { data: process, isLoading, isError, error, refetch } = useProcess(processId);
+  const completeProcess = useCompleteProcess();
+  const reopenProcess = useReopenProcess();
+  const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
+  const [showReopenConfirm, setShowReopenConfirm] = useState(false);
 
   if (isLoading) {
     return (
@@ -60,6 +67,44 @@ export const ProcessDetailPage = () => {
                 ? 'en progreso'
                 : 'completado'}
         </p>
+
+        {process.status !== 'completed' && (
+          <button
+            onClick={() => setShowCompleteConfirm(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-app-accent text-white rounded-lg font-medium hover:bg-app-accent/90 transition-colors"
+          >
+            <CheckCircle className="w-4 h-4" />
+            Marcar como completado
+          </button>
+        )}
+        {process.status === 'completed' && (
+          <button
+            onClick={() => setShowReopenConfirm(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-app-border text-app-text rounded-lg font-medium hover:bg-app-bg transition-colors"
+          >
+            <RotateCcw className="w-4 h-4" />
+            Reabrir proceso
+          </button>
+        )}
+
+        <ConfirmDialog
+          open={showCompleteConfirm}
+          onOpenChange={setShowCompleteConfirm}
+          title="Marcar como completado"
+          description="¿Estás seguro de completar este proceso? Podrás reabrirlo después si es necesario."
+          confirmLabel="Completar"
+          onConfirm={() => { completeProcess.mutate(processId!); setShowCompleteConfirm(false); }}
+          loading={completeProcess.isPending}
+        />
+        <ConfirmDialog
+          open={showReopenConfirm}
+          onOpenChange={setShowReopenConfirm}
+          title="Reabrir proceso"
+          description="¿Estás seguro de reabrir este proceso? Volverá al estado anterior."
+          confirmLabel="Reabrir"
+          onConfirm={() => { reopenProcess.mutate(processId!); setShowReopenConfirm(false); }}
+          loading={reopenProcess.isPending}
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

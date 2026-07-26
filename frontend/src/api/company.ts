@@ -6,11 +6,19 @@ export interface Company {
   name: string;
   business_type: string;
   is_active: boolean;
+  contact_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  active_process_count: number;
 }
 
 export interface CreateCompanyInput {
   name: string;
   business_type?: string;
+  business_type_custom?: string;
+  contact_name: string;
+  contact_email: string;
+  contact_phone?: string;
 }
 
 export interface ApiCallOptions {
@@ -31,7 +39,14 @@ export async function createCompany(
 ): Promise<Company> {
   return apiRequest<Company>('/companies', {
     method: 'POST',
-    body: { name: input.name, business_type: input.business_type ?? 'general' },
+    body: {
+      name: input.name,
+      business_type: input.business_type ?? 'general',
+      business_type_custom: input.business_type_custom,
+      contact_name: input.contact_name,
+      contact_email: input.contact_email,
+      contact_phone: input.contact_phone,
+    },
     token,
     signal,
   });

@@ -30,6 +30,11 @@ class CompanyTable(SQLModel, table=True):
     business_type: str = Field(max_length=50)
     is_active: bool = Field(default=True)
     name: str | None = Field(default=None, max_length=200)
+    # Contact fields (added 2026-07 — nullable for legacy rows; app-level
+    # validation enforces required-ness in the create route).
+    contact_name: str | None = Field(default=None, max_length=100)
+    contact_email: str | None = Field(default=None, max_length=255)
+    contact_phone: str | None = Field(default=None, max_length=30)
 
 
 class ConsultantTable(SQLModel, table=True):
