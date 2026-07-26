@@ -1,13 +1,5 @@
 import { useState } from 'react';
 import { CheckCircle, RotateCcw, Eye, Trash2 } from 'lucide-react';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '../../../components/ui/Table';
 import { Badge } from '../../../components/ui/Badge';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useCompleteProcess, useReopenProcess } from '../../../hooks/useProcesses';
@@ -62,6 +54,8 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
   const [completeTarget, setCompleteTarget] = useState<string | null>(null);
   const [reopenTarget, setReopenTarget] = useState<string | null>(null);
 
+  const colClass = "grid grid-cols-6 items-center px-4";
+
   return (
     <div className="bg-white rounded-xl border border-app-border shadow-sm overflow-hidden">
       <ConfirmDialog
@@ -82,92 +76,91 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
         onConfirm={() => { reopenProcess.mutate(reopenTarget!); setReopenTarget(null); }}
         loading={reopenProcess.isPending}
       />
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead>ID</TableHead>
-            <TableHead>Empresa</TableHead>
-            <TableHead>Norma</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Fecha inicio</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {processes.length === 0 ? (
-            <TableRow className="hover:bg-transparent">
-              <TableCell className="text-center text-app-muted py-8 w-full">
-                No hay procesos que coincidan con los filtros
-              </TableCell>
-            </TableRow>
-          ) : (
-            processes.map((process) => {
-              const status = STATUS_CONFIG[process.status] ?? STATUS_CONFIG.in_diagnosis;
-              return (
-                <TableRow key={process.id} className="hover:bg-app-bg/50">
-                  <TableCell className="font-mono text-xs text-app-muted">
-                    {shortId(process.id)}
-                  </TableCell>
-                  <TableCell className="font-medium text-app-text">
-                    {process.company_name || '(sin empresa)'}
-                  </TableCell>
-                  <TableCell className="text-app-text">
-                    {ISO_LABELS[process.iso_standard] ?? process.iso_standard}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="status" className={status.className}>
-                      {status.label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-app-muted">
-                    {formatDate(process.created_at)}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => onView(process.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-app-accent hover:bg-app-accent/10 rounded-md transition-colors"
-                        title="Ver proceso"
-                      >
-                        <Eye className="w-4 h-4" />
-                        Ver
-                      </button>
-                      {process.status !== 'completed' && (
-                        <button
-                          onClick={() => setCompleteTarget(process.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-status-completed-text hover:bg-status-completed-bg rounded-md transition-colors"
-                          title="Marcar como completado"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                          Completar
-                        </button>
-                      )}
-                      {process.status === 'completed' && (
-                        <button
-                          onClick={() => setReopenTarget(process.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-app-muted hover:bg-app-bg rounded-md transition-colors"
-                          title="Reabrir proceso"
-                        >
-                          <RotateCcw className="w-4 h-4" />
-                          Reabrir
-                        </button>
-                      )}
-                      <button
-                        onClick={() => onDelete(process.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                        title="Eliminar proceso"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Eliminar
-                      </button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })
-          )}
-        </TableBody>
-      </Table>
+
+      {/* Header */}
+      <div className={`${colClass} h-10 border-b border-app-border bg-app-bg`}>
+        <div className="text-xs font-medium text-app-muted">ID</div>
+        <div className="text-xs font-medium text-app-muted">Empresa</div>
+        <div className="text-xs font-medium text-app-muted">Norma</div>
+        <div className="text-xs font-medium text-app-muted">Estado</div>
+        <div className="text-xs font-medium text-app-muted">Fecha inicio</div>
+        <div className="text-xs font-medium text-app-muted text-right">Acciones</div>
+      </div>
+
+      {/* Body */}
+      {processes.length === 0 ? (
+        <div className={`${colClass} py-10`}>
+          <div className="col-span-6 text-center text-app-muted text-sm">
+            No hay procesos que coincidan con los filtros
+          </div>
+        </div>
+      ) : (
+        processes.map((process) => {
+          const status = STATUS_CONFIG[process.status] ?? STATUS_CONFIG.in_diagnosis;
+          return (
+            <div
+              key={process.id}
+              className={`${colClass} py-3 border-b border-app-border hover:bg-app-bg/50 transition-colors`}
+            >
+              <div className="font-mono text-xs text-app-muted truncate pr-2">
+                {shortId(process.id)}
+              </div>
+              <div className="font-medium text-app-text text-sm truncate pr-2">
+                {process.company_name || '(sin empresa)'}
+              </div>
+              <div className="text-app-text text-sm truncate pr-2">
+                {ISO_LABELS[process.iso_standard] ?? process.iso_standard}
+              </div>
+              <div>
+                <Badge variant="status" className={status.className}>
+                  {status.label}
+                </Badge>
+              </div>
+              <div className="text-app-muted text-sm truncate pr-2">
+                {formatDate(process.created_at)}
+              </div>
+              <div className="flex items-center justify-end gap-1.5">
+                <button
+                  onClick={() => onView(process.id)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-app-accent hover:bg-app-accent/10 rounded-md transition-colors"
+                  title="Ver proceso"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Ver
+                </button>
+                {process.status !== 'completed' && (
+                  <button
+                    onClick={() => setCompleteTarget(process.id)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-status-completed-text hover:bg-status-completed-bg rounded-md transition-colors"
+                    title="Marcar como completado"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5" />
+                    Completar
+                  </button>
+                )}
+                {process.status === 'completed' && (
+                  <button
+                    onClick={() => setReopenTarget(process.id)}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-app-muted hover:bg-app-bg rounded-md transition-colors"
+                    title="Reabrir proceso"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    Reabrir
+                  </button>
+                )}
+                <button
+                  onClick={() => onDelete(process.id)}
+                  className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                  title="Eliminar proceso"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }
