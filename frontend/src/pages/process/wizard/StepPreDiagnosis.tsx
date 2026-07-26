@@ -152,16 +152,16 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
     setSuggested(true);
   }
 
-  if (isLoading || !questionnaire) {
-    return <div className="text-app-muted text-sm py-12 text-center">Cargando pre-diagnóstico...</div>;
-  }
-
   if (loadError) {
     return (
       <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
         Error al cargar el cuestionario: {getErrorMessage(loadError)}
       </div>
     );
+  }
+
+  if (isLoading || !questionnaire) {
+    return <div className="text-app-muted text-sm py-12 text-center">Cargando pre-diagnóstico...</div>;
   }
 
   const groups = questionnaire.groups;
