@@ -85,18 +85,18 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead>ID</TableHead>
-            <TableHead>Empresa</TableHead>
-            <TableHead>Norma</TableHead>
-            <TableHead>Estado</TableHead>
-            <TableHead>Fecha inicio</TableHead>
-            <TableHead className="text-right">Acciones</TableHead>
+            <TableHead className="text-xs">ID</TableHead>
+            <TableHead className="text-xs">Empresa</TableHead>
+            <TableHead className="text-xs">Norma</TableHead>
+            <TableHead className="text-xs">Estado</TableHead>
+            <TableHead className="text-xs">Fecha inicio</TableHead>
+            <TableHead className="text-xs text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {processes.length === 0 ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="text-center text-app-muted py-8 w-full">
+              <TableCell className="text-center text-app-muted py-8">
                 No hay procesos que coincidan con los filtros
               </TableCell>
             </TableRow>
@@ -105,13 +105,13 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
               const status = STATUS_CONFIG[process.status] ?? STATUS_CONFIG.in_diagnosis;
               return (
                 <TableRow key={process.id} className="hover:bg-app-bg/50">
-                  <TableCell className="font-mono text-xs text-app-muted">
+                  <TableCell className="font-mono text-xs text-app-muted truncate">
                     {shortId(process.id)}
                   </TableCell>
-                  <TableCell className="font-medium text-app-text">
+                  <TableCell className="font-medium text-app-text text-sm truncate">
                     {process.company_name || '(sin empresa)'}
                   </TableCell>
-                  <TableCell className="text-app-text">
+                  <TableCell className="text-app-text text-sm truncate">
                     {ISO_LABELS[process.iso_standard] ?? process.iso_standard}
                   </TableCell>
                   <TableCell>
@@ -119,45 +119,45 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                       {status.label}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-app-muted">
+                  <TableCell className="text-app-muted text-sm truncate">
                     {formatDate(process.created_at)}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1.5">
                       <button
                         onClick={() => onView(process.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-app-accent hover:bg-app-accent/10 rounded-md transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-app-accent hover:bg-app-accent/10 rounded-md transition-colors"
                         title="Ver proceso"
                       >
-                        <Eye className="w-4 h-4" />
+                        <Eye className="w-3.5 h-3.5" />
                         Ver
                       </button>
                       {process.status !== 'completed' && (
                         <button
                           onClick={() => setCompleteTarget(process.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-status-completed-text hover:bg-status-completed-bg rounded-md transition-colors"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-status-completed-text hover:bg-status-completed-bg rounded-md transition-colors"
                           title="Marcar como completado"
                         >
-                          <CheckCircle className="w-4 h-4" />
+                          <CheckCircle className="w-3.5 h-3.5" />
                           Completar
                         </button>
                       )}
                       {process.status === 'completed' && (
                         <button
                           onClick={() => setReopenTarget(process.id)}
-                          className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-app-muted hover:bg-app-bg rounded-md transition-colors"
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-app-muted hover:bg-app-bg rounded-md transition-colors"
                           title="Reabrir proceso"
                         >
-                          <RotateCcw className="w-4 h-4" />
+                          <RotateCcw className="w-3.5 h-3.5" />
                           Reabrir
                         </button>
                       )}
                       <button
                         onClick={() => onDelete(process.id)}
-                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
+                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
                         title="Eliminar proceso"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                         Eliminar
                       </button>
                     </div>
