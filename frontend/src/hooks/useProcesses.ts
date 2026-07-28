@@ -16,6 +16,7 @@ export function useProcesses() {
   return useQuery({
     queryKey: ['processes'],
     queryFn: ({ signal }) => getProcesses({ token: getToken(), signal }),
+    
   });
 }
 

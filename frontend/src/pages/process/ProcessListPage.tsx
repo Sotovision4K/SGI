@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus } from 'lucide-react';
+import { Plus, ClipboardList } from 'lucide-react';
 import { useProcesses, useDeleteProcess } from '../../hooks/useProcesses';
 import { useCompanies } from '../../hooks/useCompanies';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -18,19 +18,14 @@ export const ProcessListPage = () => {
   const { data: companies = [] } = useCompanies();
   const deleteProcess = useDeleteProcess();
 
-  const [tab, setTab] = useState<'active' | 'cerrados'>('active');
-  const [isoFilter, setIsoFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
+  const [selectedEstados, setSelectedEstados] = useState<string[]>([]);
+  const [selectedNormas, setSelectedNormas] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const activeProcesses = (processes ?? []).filter((p) => p.status !== 'completed');
-  const completedProcesses = (processes ?? []).filter((p) => p.status === 'completed');
-  const sourceForTab = tab === 'active' ? activeProcesses : completedProcesses;
-
   const filtered = useMemo(() => {
-    return sourceForTab.filter((p) => {
-      if (isoFilter && p.iso_standard !== isoFilter) return false;
-      if (statusFilter && p.status !== statusFilter) return false;
+    return (processes ?? []).filter((p) => {
+      if (selectedEstados.length > 0 && !selectedEstados.includes(p.status)) return false;
+      if (selectedNormas.length > 0 && !selectedNormas.includes(p.iso_standard)) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         const matchesCompany = (p.company_name ?? '').toLowerCase().includes(q);
@@ -39,7 +34,7 @@ export const ProcessListPage = () => {
       }
       return true;
     });
-  }, [sourceForTab, isoFilter, statusFilter, searchQuery]);
+  }, [processes, selectedEstados, selectedNormas, searchQuery]);
 
   const handleDelete = (id: string) => {
     if (window.confirm('¿Estás seguro de eliminar este proceso?')) {
@@ -50,16 +45,21 @@ export const ProcessListPage = () => {
   return (
     <div className="p-6 lg:p-8 space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-app-text">Procesos de Certificación</h1>
-          <p className="text-app-muted mt-1">Gestiona tus procesos de certificación ISO</p>
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
+            <ClipboardList className="w-5 h-5 text-accent" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-app-text">Procesos de Certificación</h1>
+            <p className="text-sm text-app-muted mt-0.5">Gestiona tus procesos de certificación ISO</p>
+          </div>
         </div>
         <button
           onClick={() => navigate('/processes/new')}
-          className="inline-flex items-center gap-2 px-4 py-2 bg-app-primary text-white rounded-lg font-medium hover:bg-app-primary/90 transition-colors self-start"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-app-primary text-white rounded-lg font-medium hover:bg-app-primary/90 transition-colors self-start text-sm"
         >
           <Plus className="w-4 h-4" />
-          Nuevo Proceso
+          Nuevo proceso
         </button>
       </div>
 
@@ -74,7 +74,7 @@ export const ProcessListPage = () => {
       )}
 
       {isLoading && (
-        <div className="bg-white rounded-xl border border-app-border shadow-sm p-12 text-center text-app-muted">
+        <div className="bg-white rounded-2xl border border-app-border shadow-sm p-12 text-center text-app-muted">
           Cargando procesos...
         </div>
       )}
@@ -84,51 +84,32 @@ export const ProcessListPage = () => {
       )}
 
       {!isLoading && !isError && (processes ?? []).length > 0 && (
-        <div>
-          <div className="flex items-center gap-0 mb-4 border-b border-app-border">
-            <button
-              onClick={() => setTab('active')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === 'active' ? 'border-app-primary text-app-primary' : 'border-transparent text-app-muted hover:text-app-text'}`}
-            >
-              Activos
-            </button>
-            <button
-              onClick={() => setTab('cerrados')}
-              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === 'cerrados' ? 'border-app-primary text-app-primary' : 'border-transparent text-app-muted hover:text-app-text'}`}
-            >
-              Cerrados
-            </button>
-          </div>
-          <ProcessFilters
-            isoFilter={isoFilter}
-            setIsoFilter={setIsoFilter}
-            statusFilter={statusFilter}
-            setStatusFilter={setStatusFilter}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            hideStatusFilter={tab === 'cerrados'}
-          />
-          {tab === 'cerrados' && filtered.length === 0 ? (
-            <div className="bg-white rounded-xl border border-app-border shadow-sm p-12 text-center text-app-muted">
-              No hay procesos cerrados
-            </div>
-          ) : (
-            <ProcessTable
-              processes={filtered}
-              onView={(id) => navigate(`/processes/${id}`)}
-              onDelete={handleDelete}
-            />
-          )}
-        </div>
+        <ProcessFilters
+          selectedEstados={selectedEstados}
+          setSelectedEstados={setSelectedEstados}
+          selectedNormas={selectedNormas}
+          setSelectedNormas={setSelectedNormas}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+        />
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-2">
-        <ActivityWidget processes={processes ?? []} />
-        <CompaniesWidget
-          companies={companies}
-          navigateToNewProcess={() => navigate('/processes/new')}
-        />
-      </div>
+      {!isLoading && !isError && (processes ?? []).length > 0 && (
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
+          <ProcessTable
+            processes={filtered}
+            onView={(id) => navigate(`/processes/${id}`)}
+            onDelete={handleDelete}
+          />
+          <div className="space-y-6">
+            <ActivityWidget processes={processes ?? []} />
+            <CompaniesWidget
+              companies={companies}
+              navigateToNewProcess={() => navigate('/processes/new')}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };
