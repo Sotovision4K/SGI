@@ -1,10 +1,36 @@
 import { FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react';
-import { Card } from '../../../components/ui/Card';
 import type { Process } from '../../../api/process';
 
 interface StatCardsProps {
   processes: Process[];
 }
+
+const cards = [
+  {
+    label: 'Total procesos',
+    key: 'total' as const,
+    icon: FileText,
+    iconBg: 'bg-stat-total',
+  },
+  {
+    label: 'En progreso',
+    key: 'progreso' as const,
+    icon: Clock,
+    iconBg: 'bg-stat-progreso',
+  },
+  {
+    label: 'Completados',
+    key: 'completado' as const,
+    icon: CheckCircle,
+    iconBg: 'bg-stat-completado',
+  },
+  {
+    label: 'Pendiente revisión',
+    key: 'revision' as const,
+    icon: AlertCircle,
+    iconBg: 'bg-stat-revision',
+  },
+];
 
 export function StatCards({ processes }: StatCardsProps) {
   const total = processes.length;
@@ -14,53 +40,30 @@ export function StatCards({ processes }: StatCardsProps) {
     (p) => p.status === 'in_diagnosis' || p.status === 'plan_ready',
   ).length;
 
-  const cards = [
-    {
-      label: 'Total procesos',
-      value: total,
-      icon: FileText,
-      iconClass: 'text-app-accent',
-      iconBg: 'bg-app-accent/10',
-    },
-    {
-      label: 'En progreso',
-      value: inProgress,
-      icon: Clock,
-      iconClass: 'text-status-in-progress-text',
-      iconBg: 'bg-status-in-progress-bg',
-    },
-    {
-      label: 'Completados',
-      value: completed,
-      icon: CheckCircle,
-      iconClass: 'text-status-completed-text',
-      iconBg: 'bg-status-completed-bg',
-    },
-    {
-      label: 'Pendiente revisión',
-      value: pendingReview,
-      icon: AlertCircle,
-      iconClass: 'text-status-review-text',
-      iconBg: 'bg-status-review-bg',
-    },
-  ];
+  const values: Record<string, number> = {
+    total,
+    progreso: inProgress,
+    completado: completed,
+    revision: pendingReview,
+  };
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
       {cards.map((card) => {
         const Icon = card.icon;
         return (
-          <Card key={card.label} className="p-6 flex items-center gap-4">
+          <div
+            key={card.key}
+            className="relative bg-app-surface-alt border border-app-border rounded-2xl p-5 transition-colors hover:border-app-border-hover"
+          >
             <div
-              className={`w-12 h-12 rounded-lg flex items-center justify-center shrink-0 ${card.iconBg}`}
+              className={`absolute top-3 right-3 w-9 h-9 rounded-lg flex items-center justify-center ${card.iconBg}`}
             >
-              <Icon className={`w-6 h-6 ${card.iconClass}`} />
+              <Icon className="w-5 h-5 text-white" />
             </div>
-            <div className="min-w-0">
-              <p className="text-sm text-app-muted">{card.label}</p>
-              <p className="text-2xl font-bold text-app-text mt-0.5">{card.value}</p>
-            </div>
-          </Card>
+            <p className="text-[28px] font-bold text-app-text leading-none">{values[card.key]}</p>
+            <p className="text-sm text-app-muted mt-2">{card.label}</p>
+          </div>
         );
       })}
     </div>

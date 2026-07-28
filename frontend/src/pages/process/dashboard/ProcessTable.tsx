@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, RotateCcw, Eye, Trash2 } from 'lucide-react';
+import { CheckCircle, RotateCcw, Eye, Trash2, Pencil } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -31,7 +31,7 @@ const STATUS_CONFIG: Record<Process['status'], { label: string; className: strin
     className: 'bg-status-pending-bg text-status-pending-text',
   },
   plan_ready: {
-    label: 'Plan listo',
+    label: 'En revisión',
     className: 'bg-status-review-bg text-status-review-text',
   },
   in_progress: {
@@ -52,6 +52,18 @@ function formatDate(dateString: string): string {
   });
 }
 
+function timeAgo(dateString: string): string {
+  const diff = Date.now() - new Date(dateString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'Ahora';
+  if (minutes < 60) return `hace ${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `hace ${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `hace ${days}d`;
+  return formatDate(dateString);
+}
+
 function shortId(id: string): string {
   return id.slice(0, 8);
 }
@@ -63,7 +75,7 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
   const [reopenTarget, setReopenTarget] = useState<string | null>(null);
 
   return (
-    <div className="bg-white rounded-xl border border-app-border shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-app-border shadow-sm overflow-hidden">
       <ConfirmDialog
         open={!!completeTarget}
         onOpenChange={(open) => { if (!open) setCompleteTarget(null); }}
@@ -85,18 +97,19 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="text-xs">ID</TableHead>
-            <TableHead className="text-xs">Empresa</TableHead>
-            <TableHead className="text-xs">Norma</TableHead>
-            <TableHead className="text-xs">Estado</TableHead>
-            <TableHead className="text-xs">Fecha inicio</TableHead>
-            <TableHead className="text-xs text-right">Acciones</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">ID</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Empresa</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Norma</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Estado</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Fecha inicio</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Última actualización</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {processes.length === 0 ? (
             <TableRow className="hover:bg-transparent">
-              <TableCell className="text-center text-app-muted py-8">
+              <TableCell colSpan={7} className="text-center text-app-muted py-8">
                 No hay procesos que coincidan con los filtros
               </TableCell>
             </TableRow>
@@ -104,9 +117,11 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
             processes.map((process) => {
               const status = STATUS_CONFIG[process.status] ?? STATUS_CONFIG.in_diagnosis;
               return (
-                <TableRow key={process.id} className="hover:bg-app-bg/50">
-                  <TableCell className="font-mono text-xs text-app-muted truncate">
-                    {shortId(process.id)}
+                <TableRow key={process.id} className="hover:bg-[#F1F5F9]">
+                  <TableCell>
+                    <span className="inline-block font-mono text-xs text-app-muted px-2 py-0.5 rounded-full bg-[#F1F5F9]">
+                      {shortId(process.id)}
+                    </span>
                   </TableCell>
                   <TableCell className="font-medium text-app-text text-sm truncate">
                     {process.company_name || '(sin empresa)'}
@@ -123,42 +138,44 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                     {formatDate(process.created_at)}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center justify-end gap-1.5">
+                    <span className="inline-flex items-center gap-1.5 text-xs text-app-muted px-2 py-1 rounded-full bg-[#F1F5F9]">
+                      <Pencil className="w-3 h-3" />
+                      {timeAgo(process.updated_at)}
+                    </span>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center justify-end gap-1">
                       <button
                         onClick={() => onView(process.id)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-app-accent hover:bg-app-accent/10 rounded-md transition-colors"
-                        title="Ver proceso"
+                        data-tooltip="Ver detalles"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#0066CC] transition-colors"
                       >
-                        <Eye className="w-3.5 h-3.5" />
-                        Ver
+                        <Eye className="w-4 h-4" />
                       </button>
                       {process.status !== 'completed' && (
                         <button
                           onClick={() => setCompleteTarget(process.id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-status-completed-text hover:bg-status-completed-bg rounded-md transition-colors"
-                          title="Marcar como completado"
+                          data-tooltip="Marcar como completado"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#10B981] transition-colors"
                         >
-                          <CheckCircle className="w-3.5 h-3.5" />
-                          Completar
+                          <CheckCircle className="w-4 h-4" />
                         </button>
                       )}
                       {process.status === 'completed' && (
                         <button
                           onClick={() => setReopenTarget(process.id)}
-                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-app-muted hover:bg-app-bg rounded-md transition-colors"
-                          title="Reabrir proceso"
+                          data-tooltip="Reabrir"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#0066CC] transition-colors"
                         >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                          Reabrir
+                          <RotateCcw className="w-4 h-4" />
                         </button>
                       )}
                       <button
                         onClick={() => onDelete(process.id)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 rounded-md transition-colors"
-                        title="Eliminar proceso"
+                        data-tooltip="Eliminar"
+                        className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-red-600 transition-colors"
                       >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        Eliminar
+                        <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
                   </TableCell>
@@ -168,6 +185,31 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
           )}
         </TableBody>
       </Table>
+      <style>{`
+[data-tooltip] {
+  position: relative;
+}
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  background: #1E293B;
+  color: #fff;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+[data-tooltip]:hover::after {
+  opacity: 1;
+}
+`}</style>
     </div>
   );
 }
