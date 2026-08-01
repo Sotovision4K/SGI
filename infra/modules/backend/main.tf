@@ -66,6 +66,9 @@ resource "aws_iam_role_policy" "lambda_ses" {
           "ses:SendRawEmail"
         ]
         Resource = aws_sesv2_email_identity.sender.arn
+      }
+    ]
+  })
 
 resource "aws_lambda_function" "api" {
   function_name = "${var.project_name}-${var.environment}-api"

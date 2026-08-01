@@ -29,7 +29,7 @@ async def get_questionnaire(
     if not file_path.exists():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Cuestionario no encontrado: {file_path}",
+            detail="Cuestionario no encontrado",
         )
 
     with open(file_path, encoding="utf-8") as f:

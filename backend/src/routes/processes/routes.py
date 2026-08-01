@@ -14,6 +14,7 @@ from src.adapters.db.process_repository import ProcessRepository
 from src.adapters.db.company_repository import CompanyRepository
 from src.adapters.llm.llm_port import LLMPort
 from src.adapters.llm.anthropic_adapter import get_anthropic_adapter
+from src.routes.rate_limit import check_rate_limit
 from src.adapters.email.email_port import EmailPort
 from src.adapters.email.ses_adapter import get_email_adapter
 from src.routes.user.auth import CurrentUserDep
@@ -413,6 +414,7 @@ async def generate_plan(
     repo: ProcessRepositoryDep,
     llm: LLMDep,
 ) -> PlanResponse:
+    check_rate_limit(current_user.get("sub", "unknown"), max_requests=5, window=60)
     process = await _require_process_owner(process_id, repo, current_user)
 
     finding = await repo.get_finding(process_id)
