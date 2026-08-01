@@ -2,6 +2,32 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ChevronDown, ChevronUp, Clock, User, AlertTriangle, AlertCircle, CheckCircle2 } from 'lucide-react';
 import type { Plan, PlanTask } from '../../api/plan';
+import type { ComponentProps } from 'react';
+
+function isSafeUrl(href: string): boolean {
+  try {
+    const url = new URL(href, window.location.origin);
+    return ['http:', 'https:', 'mailto:'].includes(url.protocol);
+  } catch {
+    return false;
+  }
+}
+
+function SafeLink({ href, children }: ComponentProps<'a'>) {
+  if (href && !isSafeUrl(href)) {
+    return <span className="text-app-muted line-through">{children}</span>;
+  }
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-app-accent underline hover:opacity-80"
+    >
+      {children}
+    </a>
+  );
+}
 
 const PRIORITY_STYLES: Record<PlanTask['priority'], { bg: string; text: string; label: string; icon: typeof AlertTriangle }> = {
   high: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta', icon: AlertTriangle },
@@ -75,6 +101,7 @@ export function PlanResultView({ plan }: { plan: Plan }) {
                 ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
                 li: ({ children }) => <li>{children}</li>,
                 strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                a: SafeLink,
               }}
             >
               {plan.summary_md}

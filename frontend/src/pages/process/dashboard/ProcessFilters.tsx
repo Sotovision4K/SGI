@@ -45,14 +45,15 @@ export function ProcessFilters({
 
   return (
     <div className="flex flex-wrap items-center gap-3 p-4 bg-app-surface-alt border border-app-border rounded-2xl mb-6">
-      <div className="relative flex-1 min-w-[200px]">
-        <Search className="w-4 h-4 text-app-muted absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+      {/* Enrichment: fixed-width pill search so it reads as a compact control, not a full-width bar */}
+      <div className="relative w-full sm:w-72">
+        <Search className="w-4 h-4 text-app-muted absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
         <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Buscar por empresa o ID..."
-          className="pl-9"
+          className="pl-9 rounded-full"
           aria-label="Buscar procesos"
         />
       </div>

@@ -18,6 +18,7 @@ interface CognitoAuthResponse {
   error?: string;
 }
 
+
 /** Map raw Cognito/AWS SDK errors to user-safe Spanish messages. Never leaks raw exception text. */
 function mapCognitoError(error: unknown): string {
   const msg = error instanceof Error ? error.message : '';
