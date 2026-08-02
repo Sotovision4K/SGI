@@ -11,6 +11,8 @@ export interface Question {
   required: boolean;
   placeholder?: string;
   options?: string[];
+  default?: string;
+  hint?: string;
 }
 
 export interface QuestionGroup {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { Loader2, AlertCircle, Sparkles, ArrowRight } from 'lucide-react';
 import { useQuestionnaire } from '../../../hooks/useQuestionnaire';
@@ -38,6 +38,7 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
     handleSubmit,
     control,
     setValue,
+    reset,
     formState: { errors, isDirty, isSubmitting },
     setError,
   } = useForm<Record<string, string>>({ defaultValues: {}, mode: 'onChange' });
@@ -47,6 +48,21 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
   const values = useWatch({ control });
 
   const [subStep, setSubStep] = useState(0);
+
+  // Enrichment: apply data-driven smart defaults (q.default) once the questionnaire
+  // loads, without ever clobbering input the user may already have typed.
+  const defaultsAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!questionnaire || defaultsAppliedRef.current) return;
+    const defaults: Record<string, string> = {};
+    for (const group of questionnaire.groups) {
+      for (const q of group.questions) {
+        if (q.default) defaults[q.id] = q.default;
+      }
+    }
+    reset(defaults);
+    defaultsAppliedRef.current = true;
+  }, [questionnaire, reset]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -149,7 +165,6 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
   function handleSuggestObjectives(q: Question) {
     const suggested = getSuggestedObjectives(isoStandard!);
     setValue(q.id, suggested.join(', '), { shouldDirty: true });
-    setSuggested(true);
   }
 
   if (loadError) {
@@ -174,8 +189,13 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between gap-4">
-          <span className="text-app-muted text-sm">Paso {subStep + 1} de {totalSteps}</span>
-          <span className="text-app-muted text-sm">Revisión</span>
+          <span className="inline-flex items-center gap-2 text-sm font-medium text-app-text">
+            <span className="px-2.5 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
+              Paso {subStep + 1} de {totalSteps}
+            </span>
+            Revisión
+          </span>
+          <span className="text-app-muted text-sm">{groups.length} grupos</span>
         </div>
         <Progress value={progress} />
 
@@ -256,38 +276,49 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between gap-4">
-        <span className="text-app-muted text-sm">Paso {subStep + 1} de {totalSteps}</span>
-        <span className="text-app-muted text-sm">Pre-diagnóstico</span>
+        <span className="inline-flex items-center gap-2 text-sm font-medium text-app-text">
+          <span className="px-2.5 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
+            Paso {subStep + 1} de {totalSteps}
+          </span>
+          Pre-diagnóstico
+        </span>
+        <span className="text-app-muted text-sm">Grupo {subStep + 1} de {groups.length}</span>
       </div>
       <Progress value={progress} />
 
       <div key={currentGroup.id} className="animate-slide-in-right">
         <h3 className="text-lg font-semibold text-app-text mb-3">{currentGroup.title}</h3>
-        <div className="space-y-4">
-          {currentGroup.questions.map((q) => (
-            <div key={q.id}>
-              <div className="flex items-center justify-between mb-1">
-                <label className="block text-sm font-medium text-app-text">
-                  {q.label}
-                  {q.required && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                {q.type === 'chips' && (
-                  <button
-                    type="button"
-                    onClick={() => handleSuggestObjectives(q)}
-                    className="inline-flex items-center gap-1 text-sm text-app-accent border border-app-accent rounded-lg px-2 py-1 hover:bg-app-accent/10 transition-colors"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    Sugerir con IA
-                  </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-5">
+          {currentGroup.questions.map((q) => {
+            const fullWidth = q.type === 'textarea' || q.type === 'cards' || q.type === 'chips';
+            return (
+              <div key={q.id} className={fullWidth ? 'md:col-span-2' : undefined}>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-app-text">
+                    {q.label}
+                    {q.required && <span className="text-red-500 ml-1">*</span>}
+                  </label>
+                  {q.type === 'chips' && (
+                    <button
+                      type="button"
+                      onClick={() => handleSuggestObjectives(q)}
+                      className="inline-flex items-center gap-1 text-sm text-app-accent border border-app-accent rounded-lg px-2 py-1 hover:bg-app-accent/10 transition-colors"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Sugerir con IA
+                    </button>
+                  )}
+                </div>
+                {renderQuestion(q)}
+                {q.hint && !errors[q.id] && (
+                  <p className="text-xs text-app-muted mt-1">{q.hint}</p>
+                )}
+                {errors[q.id] && (
+                  <p className="text-red-500 text-xs mt-1">{errors[q.id]?.message as string}</p>
                 )}
               </div>
-              {renderQuestion(q)}
-              {errors[q.id] && (
-                <p className="text-red-500 text-xs mt-1">{errors[q.id]?.message as string}</p>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 

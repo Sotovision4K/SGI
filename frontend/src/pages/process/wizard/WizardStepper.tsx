@@ -12,16 +12,15 @@ export function WizardStepper({ current, steps }: WizardStepperProps) {
         {steps.map((label, i) => {
           const isActive = i === current;
           const isCompleted = i < current;
-          const isPending = i > current;
           return (
-            <li key={i} className="flex-1 flex items-center">
+            <li key={i} className="flex-1 flex items-center" aria-current={isActive ? 'step' : undefined}>
               <div className="flex items-center gap-2">
                 <span
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold transition-all ${
                     isCompleted
                       ? 'bg-success text-white'
                       : isActive
-                        ? 'bg-app-primary text-white'
+                        ? 'bg-app-primary text-white ring-2 ring-app-accent/40 ring-offset-2'
                         : 'bg-app-bg text-app-muted border border-app-border'
                   }`}
                 >
@@ -38,7 +37,7 @@ export function WizardStepper({ current, steps }: WizardStepperProps) {
               {i < steps.length - 1 && (
                 <div
                   className={`flex-1 h-0.5 mx-2 ${
-                    isCompleted ? 'bg-success' : isPending ? 'bg-app-border' : 'bg-app-border'
+                    isCompleted ? 'bg-success' : 'bg-app-border'
                   }`}
                 />
               )}

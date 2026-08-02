@@ -69,6 +69,7 @@ resource "aws_iam_role_policy" "lambda_ses" {
       }
     ]
   })
+}
 
 resource "aws_lambda_function" "api" {
   function_name = "${var.project_name}-${var.environment}-api"

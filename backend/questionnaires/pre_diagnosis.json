@@ -8,12 +8,12 @@
       "title": "Perfil de la empresa",
       "clauses": [],
       "questions": [
-        {"id": "pd_employees", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "required": true, "options": ["1-10", "11-50", "51-250", "más de 250"]},
-        {"id": "pd_business_model", "type": "select", "label": "¿Cuál es el modelo de negocio?", "required": true, "options": ["B2B", "B2C", "B2G", "Mixto"]},
-        {"id": "pd_sector", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: construcción, alimentos, tecnología..."},
-        {"id": "pd_sites", "type": "text", "label": "¿Cuántas sedes tiene y en qué países opera?", "required": true, "placeholder": "Ej: 2 sedes en Colombia"},
-        {"id": "pd_products", "type": "textarea", "label": "¿Cuáles son sus principales productos o servicios?", "required": false, "placeholder": "Describa brevemente..."},
-        {"id": "pd_outsourcing", "type": "select", "label": "¿Subcontrata procesos clave (producción, logística, mantenimiento)?", "required": true, "options": ["Sí", "No", "Parcialmente"]}
+        {"id": "pd_employees", "type": "select", "label": "¿Cuántos empleados tiene la empresa?", "required": true, "options": ["1-10", "11-50", "51-250", "más de 250"], "default": "51-250", "hint": "Seleccione el rango aproximado"},
+        {"id": "pd_business_model", "type": "select", "label": "¿Cuál es el modelo de negocio?", "required": true, "options": ["B2B", "B2C", "B2G", "Mixto"], "hint": "¿Cómo vende o presta sus servicios?"},
+        {"id": "pd_sector", "type": "text", "label": "¿A qué sector o industria pertenece?", "required": true, "placeholder": "Ej: construcción, alimentos, tecnología...", "default": "Tecnología", "hint": "Ej: construcción, alimentos, tecnología..."},
+        {"id": "pd_sites", "type": "text", "label": "¿Cuántas sedes tiene y en qué países opera?", "required": true, "placeholder": "Ej: 2 sedes en Colombia", "default": "2 sedes en Colombia"},
+        {"id": "pd_products", "type": "textarea", "label": "¿Cuáles son sus principales productos o servicios?", "required": false, "placeholder": "Describa brevemente...", "hint": "Liste los productos o servicios que vende u ofrece"},
+        {"id": "pd_outsourcing", "type": "select", "label": "¿Subcontrata procesos clave (producción, logística, mantenimiento)?", "required": true, "options": ["Sí", "No", "Parcialmente"], "hint": "Indique si terceriza procesos clave"}
       ]
     },
     {

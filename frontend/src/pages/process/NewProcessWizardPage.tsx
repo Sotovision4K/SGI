@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ClipboardList } from 'lucide-react';
 import { WizardStepper } from './wizard/WizardStepper';
 import { StepSetup } from './wizard/StepSetup';
 import { StepPreDiagnosis } from './wizard/StepPreDiagnosis';
 import { StepFindings } from './wizard/StepFindings';
 import { PlanResultView } from './PlanResultView';
+import { toast } from '../../components/ui/toast';
 import type { Plan } from '../../api/plan';
 
 type ISOStandard = 'iso9001' | 'iso14001' | 'iso45001';
@@ -46,6 +48,7 @@ export function NewProcessWizardPage() {
     setIsoStandard(iso);
     setIsDirty(false);
     setStep(1);
+    toast.success('Proceso creado correctamente', { position: 'bottom-center' });
   }
 
   function handlePreDiagnosisDone() {
@@ -57,6 +60,7 @@ export function NewProcessWizardPage() {
     setPlan(planResult);
     setIsDirty(false);
     setStep(3);
+    toast.success('Plan de acción generado', { position: 'bottom-center' });
   }
 
   function handleViewProcess() {
@@ -64,56 +68,69 @@ export function NewProcessWizardPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-app-text">Nuevo Proceso de Certificación</h1>
-        <p className="text-app-muted mt-1">Complete los pasos para iniciar su certificación ISO</p>
-      </div>
+    <div className="p-4 lg:p-6 min-h-full">
+      <div className="max-w-4xl mx-auto">
+        {/* Enrichment: hero header gives the wizard page structure and a clear step context */}
+        <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-app-accent/10 flex items-center justify-center">
+              <ClipboardList className="w-5 h-5 text-app-accent" aria-hidden="true" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-app-text">Nuevo Proceso de Certificación</h1>
+              <p className="text-app-muted mt-0.5">Complete los pasos para iniciar su certificación ISO</p>
+            </div>
+          </div>
+          <span className="self-start sm:self-center px-3 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
+            Paso {step + 1} de {STEPS.length} · {STEPS[step]}
+          </span>
+        </header>
 
-      <WizardStepper current={step} steps={STEPS} />
+        <WizardStepper current={step} steps={STEPS} />
 
-      <div className="bg-white rounded-xl border border-app-border p-6 shadow-sm min-h-[400px]">
-        <div key={step} className="animate-slide-in-right">
-          {step === 0 && <StepSetup onCreated={handleCreated} onDirtyChange={setIsDirty} />}
-          {step === 1 && processId && (
-            <StepPreDiagnosis
-              processId={processId}
-              isoStandard={isoStandard!}
-              onDone={handlePreDiagnosisDone}
-              onDirtyChange={setIsDirty}
-            />
-          )}
-          {step === 2 && processId && isoStandard && (
-            <StepFindings
-              processId={processId}
-              isoStandard={isoStandard}
-              onPlanReady={handlePlanReady}
-              onDirtyChange={setIsDirty}
-            />
-          )}
-          {step === 3 && plan && (
-            <PlanResultView plan={plan} />
-          )}
+        <div className="bg-white rounded-2xl border border-app-border p-6 lg:p-8 shadow-md min-h-[400px]">
+          <div key={step} className="animate-slide-in-right">
+            {step === 0 && <StepSetup onCreated={handleCreated} onDirtyChange={setIsDirty} />}
+            {step === 1 && processId && (
+              <StepPreDiagnosis
+                processId={processId}
+                isoStandard={isoStandard!}
+                onDone={handlePreDiagnosisDone}
+                onDirtyChange={setIsDirty}
+              />
+            )}
+            {step === 2 && processId && isoStandard && (
+              <StepFindings
+                processId={processId}
+                isoStandard={isoStandard}
+                onPlanReady={handlePlanReady}
+                onDirtyChange={setIsDirty}
+              />
+            )}
+            {step === 3 && plan && (
+              <PlanResultView plan={plan} />
+            )}
+          </div>
         </div>
-      </div>
 
-      {/* Footer */}
-      <footer className="flex justify-between mt-6">
-        <button
-          onClick={handleExit}
-          className="px-4 py-2 border border-app-border rounded-lg text-sm font-medium text-app-muted hover:text-app-text hover:bg-app-bg transition-colors"
-        >
-          {step === 3 ? 'Cerrar' : 'Salir'}
-        </button>
-        {step === 3 && (
+        {/* Footer */}
+        <footer className="flex justify-between mt-6">
           <button
-            onClick={handleViewProcess}
-            className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors"
+            onClick={handleExit}
+            className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
           >
-            Ver proceso
+            {step === 3 ? 'Cerrar' : 'Salir'}
           </button>
-        )}
-      </footer>
+          {step === 3 && (
+            <button
+              onClick={handleViewProcess}
+              className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors"
+            >
+              Ver proceso
+            </button>
+          )}
+        </footer>
+      </div>
     </div>
   );
 }

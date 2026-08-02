@@ -93,7 +93,7 @@ describe('StepPreDiagnosis', () => {
 
   it('renders a fallback when isoStandard prop is missing', () => {
     render(
-      // @ts-expect-error: intentionally omitting isoStandard to test fallback
+      // isoStandard is optional — omitting it exercises the fallback path
       <StepPreDiagnosis processId="p-1" onDone={vi.fn()} onDirtyChange={vi.fn()} />,
     );
     expect(screen.getByText(/Falta la norma ISO/i)).toBeInTheDocument();
