@@ -187,66 +187,70 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
   // Review sub-step ----------------------------------------------------------------
   if (isReview) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between gap-4">
-          <span className="inline-flex items-center gap-2 text-sm font-medium text-app-text">
-            <span className="px-2.5 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
-              Paso {subStep + 1} de {totalSteps}
-            </span>
-            Revisión
-          </span>
-          <span className="text-app-muted text-sm">{groups.length} grupos</span>
-        </div>
-        <Progress value={progress} />
+      <div className="flex-1 min-h-0 flex flex-col">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="space-y-6">
+            <div className="flex items-center justify-between gap-4">
+              <span className="inline-flex items-center gap-2 text-sm font-medium text-app-text">
+                <span className="px-2.5 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
+                  Paso {subStep + 1} de {totalSteps}
+                </span>
+                Revisión
+              </span>
+              <span className="text-app-muted text-sm">{groups.length} grupos</span>
+            </div>
+            <Progress value={progress} />
 
-        <Card>
-          <CardContent className="space-y-5">
-            <h3 className="text-lg font-semibold text-app-text">Revisar respuestas</h3>
-            {groups.map((group) => (
-              <div key={group.id} className="space-y-3">
-                <h4 className="font-semibold text-app-text">{group.title}</h4>
-                <div className="space-y-2">
-                  {group.questions.map((q) => {
-                    const raw = String((values as Record<string, string>)[q.id] ?? '');
-                    return (
-                      <div key={q.id} className="text-sm">
-                        <div className="text-app-muted">{q.label}</div>
-                        {q.type === 'chips' ? (
-                          <div className="mt-1 flex flex-wrap gap-1.5">
-                            {splitChips(raw).length === 0 ? (
-                              <span className="text-app-muted italic">—</span>
+            <Card>
+              <CardContent className="space-y-5">
+                <h3 className="text-lg font-semibold text-app-text">Revisar respuestas</h3>
+                {groups.map((group) => (
+                  <div key={group.id} className="space-y-3">
+                    <h4 className="font-semibold text-app-text">{group.title}</h4>
+                    <div className="space-y-2">
+                      {group.questions.map((q) => {
+                        const raw = String((values as Record<string, string>)[q.id] ?? '');
+                        return (
+                          <div key={q.id} className="text-sm">
+                            <div className="text-app-muted">{q.label}</div>
+                            {q.type === 'chips' ? (
+                              <div className="mt-1 flex flex-wrap gap-1.5">
+                                {splitChips(raw).length === 0 ? (
+                                  <span className="text-app-muted italic">—</span>
+                                ) : (
+                                  splitChips(raw).map((chip) => (
+                                    <Badge key={chip} variant="default">{chip}</Badge>
+                                  ))
+                                )}
+                              </div>
+                            ) : q.type === 'cards' ? (
+                              <div className="mt-1 font-medium text-app-text">
+                                {raw || <span className="text-app-muted italic">—</span>}
+                              </div>
                             ) : (
-                              splitChips(raw).map((chip) => (
-                                <Badge key={chip} variant="default">{chip}</Badge>
-                              ))
+                              <div className="mt-1 text-app-text">
+                                {raw || <span className="text-app-muted italic">—</span>}
+                              </div>
                             )}
                           </div>
-                        ) : q.type === 'cards' ? (
-                          <div className="mt-1 font-medium text-app-text">
-                            {raw || <span className="text-app-muted italic">—</span>}
-                          </div>
-                        ) : (
-                          <div className="mt-1 text-app-text">
-                            {raw || <span className="text-app-muted italic">—</span>}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
 
         {errors.root && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
+          <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700 mt-4">
             <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
             <span>{errors.root.message}</span>
           </div>
         )}
 
-        <div className="pt-4 border-t border-app-border flex justify-between">
+        <div className="shrink-0 pt-4 border-t border-app-border flex justify-between">
           <button
             type="button"
             onClick={() => setSubStep((s) => s - 1)}
@@ -274,62 +278,66 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
   const isLastGroup = subStep === groups.length - 1;
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <span className="inline-flex items-center gap-2 text-sm font-medium text-app-text">
-          <span className="px-2.5 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
-            Paso {subStep + 1} de {totalSteps}
-          </span>
-          Pre-diagnóstico
-        </span>
-        <span className="text-app-muted text-sm">Grupo {subStep + 1} de {groups.length}</span>
-      </div>
-      <Progress value={progress} />
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <span className="inline-flex items-center gap-2 text-sm font-medium text-app-text">
+              <span className="px-2.5 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
+                Paso {subStep + 1} de {totalSteps}
+              </span>
+              Pre-diagnóstico
+            </span>
+            <span className="text-app-muted text-sm">Grupo {subStep + 1} de {groups.length}</span>
+          </div>
+          <Progress value={progress} />
 
-      <div key={currentGroup.id} className="animate-slide-in-right">
-        <h3 className="text-lg font-semibold text-app-text mb-3">{currentGroup.title}</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-5">
-          {currentGroup.questions.map((q) => {
-            const fullWidth = q.type === 'textarea' || q.type === 'cards' || q.type === 'chips';
-            return (
-              <div key={q.id} className={fullWidth ? 'md:col-span-2' : undefined}>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-sm font-medium text-app-text">
-                    {q.label}
-                    {q.required && <span className="text-red-500 ml-1">*</span>}
-                  </label>
-                  {q.type === 'chips' && (
-                    <button
-                      type="button"
-                      onClick={() => handleSuggestObjectives(q)}
-                      className="inline-flex items-center gap-1 text-sm text-app-accent border border-app-accent rounded-lg px-2 py-1 hover:bg-app-accent/10 transition-colors"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Sugerir con IA
-                    </button>
-                  )}
-                </div>
-                {renderQuestion(q)}
-                {q.hint && !errors[q.id] && (
-                  <p className="text-xs text-app-muted mt-1">{q.hint}</p>
-                )}
-                {errors[q.id] && (
-                  <p className="text-red-500 text-xs mt-1">{errors[q.id]?.message as string}</p>
-                )}
-              </div>
-            );
-          })}
+          <div key={currentGroup.id} className="animate-slide-in-right">
+            <h3 className="text-lg font-semibold text-app-text mb-3">{currentGroup.title}</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-5 gap-y-5">
+              {currentGroup.questions.map((q) => {
+                const fullWidth = q.type === 'textarea' || q.type === 'cards' || q.type === 'chips';
+                return (
+                  <div key={q.id} className={fullWidth ? 'md:col-span-2' : undefined}>
+                    <div className="flex items-start justify-between min-h-10 mb-1">
+                      <label className="flex-1 min-w-0 block text-sm font-medium text-app-text line-clamp-2" title={q.label}>
+                        {q.label}
+                        {q.required && <span className="text-red-500 ml-1">*</span>}
+                      </label>
+                      {q.type === 'chips' && (
+                        <button
+                          type="button"
+                          onClick={() => handleSuggestObjectives(q)}
+                          className="inline-flex items-center gap-1 text-sm text-app-accent border border-app-accent rounded-lg px-2 py-1 hover:bg-app-accent/10 transition-colors"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          Sugerir con IA
+                        </button>
+                      )}
+                    </div>
+                    {renderQuestion(q)}
+                    {q.hint && !errors[q.id] && (
+                      <p className="text-xs text-app-muted mt-1">{q.hint}</p>
+                    )}
+                    {errors[q.id] && (
+                      <p className="text-red-500 text-xs mt-1">{errors[q.id]?.message as string}</p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
 
       {errors.root && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
+        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700 mt-4">
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
           <span>{errors.root.message}</span>
         </div>
       )}
 
-      <div className="pt-4 border-t border-app-border flex justify-between">
+      <div className="shrink-0 pt-4 border-t border-app-border flex justify-between">
         {subStep > 0 ? (
           <button
             type="button"

@@ -148,6 +148,7 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                       <button
                         onClick={() => onView(process.id)}
                         data-tooltip="Ver detalles"
+                        aria-label="Ver detalles"
                         className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#0066CC] transition-colors"
                       >
                         <Eye className="w-4 h-4" />
@@ -155,7 +156,8 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                       {process.status !== 'completed' && (
                         <button
                           onClick={() => setCompleteTarget(process.id)}
-                          data-tooltip="Marcar como completado"
+                          data-tooltip="Completar"
+                          aria-label="Completar"
                           className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#10B981] transition-colors"
                         >
                           <CheckCircle className="w-4 h-4" />
@@ -165,6 +167,7 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                         <button
                           onClick={() => setReopenTarget(process.id)}
                           data-tooltip="Reabrir"
+                          aria-label="Reabrir"
                           className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#0066CC] transition-colors"
                         >
                           <RotateCcw className="w-4 h-4" />
@@ -173,6 +176,7 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                       <button
                         onClick={() => onDelete(process.id)}
                         data-tooltip="Eliminar"
+                        aria-label="Eliminar"
                         className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-red-600 transition-colors"
                       >
                         <Trash2 className="w-4 h-4" />

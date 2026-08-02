@@ -68,10 +68,10 @@ export function NewProcessWizardPage() {
   }
 
   return (
-    <div className="p-4 lg:p-6 min-h-full">
-      <div className="max-w-4xl mx-auto">
+    <div className="h-screen overflow-hidden p-4 lg:p-6">
+      <div className="max-w-4xl mx-auto h-full flex flex-col">
         {/* Enrichment: hero header gives the wizard page structure and a clear step context */}
-        <header className="mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <header className="shrink-0 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-app-accent/10 flex items-center justify-center">
               <ClipboardList className="w-5 h-5 text-app-accent" aria-hidden="true" />
@@ -86,10 +86,10 @@ export function NewProcessWizardPage() {
           </span>
         </header>
 
-        <WizardStepper current={step} steps={STEPS} />
+        <div className="shrink-0"><WizardStepper current={step} steps={STEPS} /></div>
 
-        <div className="bg-white rounded-2xl border border-app-border p-6 lg:p-8 shadow-md min-h-[400px]">
-          <div key={step} className="animate-slide-in-right">
+        <div className="flex-1 min-h-0 bg-white rounded-2xl border border-app-border p-6 lg:p-8 shadow-md flex flex-col">
+          <div key={step} className="flex-1 min-h-0 flex flex-col animate-slide-in-right">
             {step === 0 && <StepSetup onCreated={handleCreated} onDirtyChange={setIsDirty} />}
             {step === 1 && processId && (
               <StepPreDiagnosis
@@ -114,7 +114,7 @@ export function NewProcessWizardPage() {
         </div>
 
         {/* Footer */}
-        <footer className="flex justify-between mt-6">
+        <footer className="shrink-0 flex justify-between mt-6">
           <button
             onClick={handleExit}
             className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"

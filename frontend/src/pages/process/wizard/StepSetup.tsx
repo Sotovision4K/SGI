@@ -67,130 +67,134 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Empresa card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-app-accent/10 flex items-center justify-center">
-                <Building2 className="w-4 h-4 text-app-accent" aria-hidden="true" />
-              </span>
-              Empresa
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {companiesLoading ? (
-              <div className="text-app-muted text-sm">Cargando empresas...</div>
-            ) : companies.length === 0 && !showCreateCompany ? (
-              <div className="text-app-muted text-sm">
-                No hay empresas registradas. Crea una nueva para continuar.
-              </div>
-            ) : (
-              <SelectNative
-                {...register('company_id', { required: 'Seleccione una empresa' })}
-                disabled={showCreateCompany}
-              >
-                <option value="">Seleccione una empresa...</option>
-                {companies.map((c) => (
-                  <option key={c.company_id} value={c.company_id}>
-                    {c.name || '(sin nombre)'} - {c.business_type}
-                  </option>
-                ))}
-              </SelectNative>
-            )}
-            {errors.company_id && <p className="text-red-500 text-xs mt-1">{errors.company_id.message}</p>}
-
-            {!showCreateCompany ? (
-              <button
-                type="button"
-                onClick={() => setShowCreateCompany(true)}
-                className="inline-flex items-center gap-1.5 text-sm text-app-accent hover:underline"
-              >
-                <Plus className="w-4 h-4" aria-hidden="true" />
-                <span>+ Crear nueva empresa</span>
-              </button>
-            ) : (
-              <div className="p-4 border border-app-border rounded-lg bg-app-bg">
-                <CompanyForm
-                  variant="inline"
-                  existingCompanyNames={companies.filter((c) => c.company_id !== selectedCompany).map((c) => c.name)}
-                  onSuccess={(company) => {
-                    setValue('company_id', company.company_id);
-                    setShowCreateCompany(false);
-                  }}
-                  onCancel={() => setShowCreateCompany(false)}
-                />
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Norma ISO card */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <span className="w-8 h-8 rounded-lg bg-app-accent/10 flex items-center justify-center">
-                <Award className="w-4 h-4 text-app-accent" aria-hidden="true" />
-              </span>
-              Norma ISO
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-2">
-              {ISO_OPTIONS.map((opt) => {
-                const Icon = opt.icon;
-                const selected = selectedIso === opt.value;
-                return (
-                  <label
-                    key={opt.value}
-                    className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
-                      selected
-                        ? 'border-app-accent bg-app-accent/10 shadow-sm'
-                        : 'border-app-border hover:border-app-accent/50 hover:bg-app-bg'
-                    }`}
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Empresa card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-app-accent/10 flex items-center justify-center">
+                    <Building2 className="w-4 h-4 text-app-accent" aria-hidden="true" />
+                  </span>
+                  Empresa
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {companiesLoading ? (
+                  <div className="text-app-muted text-sm">Cargando empresas...</div>
+                ) : companies.length === 0 && !showCreateCompany ? (
+                  <div className="text-app-muted text-sm">
+                    No hay empresas registradas. Crea una nueva para continuar.
+                  </div>
+                ) : (
+                  <SelectNative
+                    {...register('company_id', { required: 'Seleccione una empresa' })}
+                    disabled={showCreateCompany}
                   >
-                    <input
-                      type="radio"
-                      value={opt.value}
-                      {...register('iso_standard', { required: 'Seleccione una norma ISO' })}
-                      className="sr-only"
+                    <option value="">Seleccione una empresa...</option>
+                    {companies.map((c) => (
+                      <option key={c.company_id} value={c.company_id}>
+                        {c.name || '(sin nombre)'} - {c.business_type}
+                      </option>
+                    ))}
+                  </SelectNative>
+                )}
+                {errors.company_id && <p className="text-red-500 text-xs mt-1">{errors.company_id.message}</p>}
+
+                {!showCreateCompany ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateCompany(true)}
+                    className="inline-flex items-center gap-1.5 text-sm text-app-accent hover:underline"
+                  >
+                    <Plus className="w-4 h-4" aria-hidden="true" />
+                    <span>+ Crear nueva empresa</span>
+                  </button>
+                ) : (
+                  <div className="p-4 border border-app-border rounded-lg bg-app-bg">
+                    <CompanyForm
+                      variant="inline"
+                      existingCompanyNames={companies.filter((c) => c.company_id !== selectedCompany).map((c) => c.name)}
+                      onSuccess={(company) => {
+                        setValue('company_id', company.company_id);
+                        setShowCreateCompany(false);
+                      }}
+                      onCancel={() => setShowCreateCompany(false)}
                     />
-                    <span
-                      className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                        selected ? 'bg-app-accent text-white' : 'bg-app-bg text-app-muted'
-                      }`}
-                    >
-                      <Icon className="w-5 h-5" aria-hidden="true" />
-                    </span>
-                    <span className="flex-1">
-                      <span className="flex items-center justify-between">
-                        <span className="font-semibold text-app-text">{opt.label}</span>
-                        {selected && (
-                          <span className="w-5 h-5 rounded-full bg-app-accent text-white flex items-center justify-center">
-                            <Check className="w-3 h-3" aria-hidden="true" />
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Norma ISO card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <span className="w-8 h-8 rounded-lg bg-app-accent/10 flex items-center justify-center">
+                    <Award className="w-4 h-4 text-app-accent" aria-hidden="true" />
+                  </span>
+                  Norma ISO
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-2">
+                  {ISO_OPTIONS.map((opt) => {
+                    const Icon = opt.icon;
+                    const selected = selectedIso === opt.value;
+                    return (
+                      <label
+                        key={opt.value}
+                        className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
+                          selected
+                            ? 'border-app-accent bg-app-accent/10 shadow-sm'
+                            : 'border-app-border hover:border-app-accent/50 hover:bg-app-bg'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          value={opt.value}
+                          {...register('iso_standard', { required: 'Seleccione una norma ISO' })}
+                          className="sr-only"
+                        />
+                        <span
+                          className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
+                            selected ? 'bg-app-accent text-white' : 'bg-app-bg text-app-muted'
+                          }`}
+                        >
+                          <Icon className="w-5 h-5" aria-hidden="true" />
+                        </span>
+                        <span className="flex-1">
+                          <span className="flex items-center justify-between">
+                            <span className="font-semibold text-app-text">{opt.label}</span>
+                            {selected && (
+                              <span className="w-5 h-5 rounded-full bg-app-accent text-white flex items-center justify-center">
+                                <Check className="w-3 h-3" aria-hidden="true" />
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </span>
-                      <span className="block text-sm text-app-muted">{opt.description}</span>
-                    </span>
-                  </label>
-                );
-              })}
+                          <span className="block text-sm text-app-muted">{opt.description}</span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+                {errors.iso_standard && <p className="text-red-500 text-xs mt-1">{errors.iso_standard.message}</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
             </div>
-            {errors.iso_standard && <p className="text-red-500 text-xs mt-1">{errors.iso_standard.message}</p>}
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </div>
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>{error}</span>
-        </div>
-      )}
-
-      <div className="pt-4 border-t border-app-border flex justify-end">
+      <div className="shrink-0 pt-4 border-t border-app-border flex justify-end">
         <button
           type="button"
           onClick={handleSubmit(onSubmit)}

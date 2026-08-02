@@ -110,35 +110,39 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
   }
 
   return (
-    <div className="space-y-6">
-      {questionnaire.groups.map((group) => (
-        <div key={group.id}>
-          <div className="flex items-baseline gap-2 mb-3">
-            <h3 className="text-lg font-semibold text-app-text">{group.title}</h3>
-            <span className="text-xs text-app-muted">{group.clauses.join(', ')}</span>
-          </div>
-          <div className="space-y-4">
-            {group.questions.map((q) => (
-              <div key={q.id}>
-                <label className="block text-sm font-medium text-app-text mb-1">
-                  {q.label}
-                  {q.required && <span className="text-red-500 ml-1">*</span>}
-                </label>
-                {renderQuestion(q)}
+    <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="space-y-6">
+          {questionnaire.groups.map((group) => (
+            <div key={group.id}>
+              <div className="flex items-baseline gap-2 mb-3">
+                <h3 className="text-lg font-semibold text-app-text">{group.title}</h3>
+                <span className="text-xs text-app-muted">{group.clauses.join(', ')}</span>
               </div>
-            ))}
-          </div>
-        </div>
-      ))}
+              <div className="space-y-4">
+                {group.questions.map((q) => (
+                  <div key={q.id}>
+                    <label className="block text-sm font-medium text-app-text mb-1">
+                      {q.label}
+                      {q.required && <span className="text-red-500 ml-1">*</span>}
+                    </label>
+                    {renderQuestion(q)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
 
-      {error && (
-        <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
-          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-          <span>{error}</span>
+          {error && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg flex items-start gap-2 text-sm text-red-700">
+              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+              <span>{error}</span>
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
-      <div className="pt-4 border-t border-app-border flex justify-end">
+      <div className="shrink-0 pt-4 border-t border-app-border flex justify-end">
         <button
           type="button"
           onClick={handleSubmit(onSubmit)}
