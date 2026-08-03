@@ -1,3 +1,5 @@
+
+
 ---
 description: Create a FastAPI endpoint following TDD, security, and project standards.
 ---
@@ -114,6 +116,9 @@ async def {endpoint_name}(
     - **Responsibility**: Single, focused action (KISS principle)
     - **Idempotency**: {Describe idempotency strategy, if applicable}
     - **Auth**: {Public / JWT Required / Role-based}
+    - **Timeout handling**: Returns 202 if external service timeout (async processing)
+i need    - **Timeout handling**: Returns 202 if external service timeout (async processing)
+
     """
     try:
         # Your implementation

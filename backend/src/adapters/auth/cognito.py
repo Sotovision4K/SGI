@@ -23,8 +23,7 @@ class CognitoAdapter:
         if token in self.payload_cache:
             return self.payload_cache[token]
 
-        # Wrap all token-level failures as InvalidTokenError so callers
-        # (auth.py) always get a 401, never a 500 from JWKS/network errors.
+
         try:
             signing_key = self.jwks_client.get_signing_key_from_jwt(token)
             payload = jwt.decode(
@@ -32,10 +31,7 @@ class CognitoAdapter:
                 signing_key.key,
                 algorithms=["RS256"],
                 issuer=self.issuer,
-                # Cognito access tokens carry `client_id`, not `aud` (ID tokens
-                # carry `aud`). We disable PyJWT's audience check and verify
-                # `client_id` + `token_use` manually below, which also rejects
-                # ID tokens (they lack `client_id`) and cross-client tokens.
+   
                 options={"verify_aud": False},
             )
         except jwt.InvalidTokenError:

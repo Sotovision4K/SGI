@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Loader2, AlertCircle, Sparkles } from 'lucide-react';
 import { useQuestionnaire } from '../../../hooks/useQuestionnaire';
@@ -13,19 +13,30 @@ interface StepFindingsProps {
   isoStandard: 'iso9001' | 'iso14001' | 'iso45001';
   onPlanReady: (plan: Plan) => void;
   onDirtyChange: (dirty: boolean) => void;
+  initialValues?: Record<string, string>;
 }
 
-export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChange }: StepFindingsProps) {
-  const { getToken } = useApiAuthBridge();
-  const { data: questionnaire, isLoading, error: loadError } = useQuestionnaire(isoStandard);
-  const [generating, setGenerating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+export interface StepFindingsHandle {
+  getDraftState: () => { answers: Record<string, string> };
+}
 
-  const {
-    register,
-    handleSubmit,
-    formState: { isDirty, isSubmitting },
-  } = useForm<Record<string, string>>({ defaultValues: {}, mode: 'onChange' });
+export const StepFindings = forwardRef<StepFindingsHandle, StepFindingsProps>(
+  function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChange, initialValues }: StepFindingsProps, ref) {
+    const { getToken } = useApiAuthBridge();
+    const { data: questionnaire, isLoading, error: loadError } = useQuestionnaire(isoStandard);
+    const [generating, setGenerating] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    const {
+      register,
+      handleSubmit,
+      getValues,
+      formState: { isDirty, isSubmitting },
+    } = useForm<Record<string, string>>({ defaultValues: initialValues ?? {}, mode: 'onChange' });
+
+    useImperativeHandle(ref, () => ({
+      getDraftState: () => ({ answers: getValues() }),
+    }), [getValues]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -155,4 +166,5 @@ export function StepFindings({ processId, isoStandard, onPlanReady, onDirtyChang
       </div>
     </div>
   );
-}
+  },
+);

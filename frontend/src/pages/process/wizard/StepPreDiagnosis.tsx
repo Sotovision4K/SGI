@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useForm, Controller, useWatch } from 'react-hook-form';
 import { Loader2, AlertCircle, Sparkles, ArrowRight } from 'lucide-react';
 import { useQuestionnaire } from '../../../hooks/useQuestionnaire';
@@ -20,6 +20,14 @@ interface StepPreDiagnosisProps {
   isoStandard?: ISOStandard;
   onDone: () => void;
   onDirtyChange: (dirty: boolean) => void;
+  initialValues?: Record<string, string>;
+  initialSubStep?: number;
+  startAtReview?: boolean;
+  onProgressSave?: (answers: Record<string, string>, nextSubStep: number) => void;
+}
+
+export interface StepPreDiagnosisHandle {
+  getDraftState: () => { answers: Record<string, string>; subStep: number };
 }
 
 /** Split a comma-joined chips value into items. */
@@ -30,7 +38,17 @@ function splitChips(value: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange }: StepPreDiagnosisProps) {
+export const StepPreDiagnosis = forwardRef<StepPreDiagnosisHandle, StepPreDiagnosisProps>(
+  function StepPreDiagnosis({
+    processId,
+    isoStandard,
+    onDone,
+    onDirtyChange,
+    initialValues,
+    initialSubStep,
+    startAtReview,
+    onProgressSave,
+  }: StepPreDiagnosisProps, ref) {
   const { getToken } = useApiAuthBridge();
   const { data: questionnaire, isLoading, error: loadError } = useQuestionnaire('pre_diagnosis');
   const {
@@ -38,6 +56,7 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
     handleSubmit,
     control,
     setValue,
+    getValues,
     reset,
     formState: { errors, isDirty, isSubmitting },
     setError,
@@ -49,8 +68,13 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
 
   const [subStep, setSubStep] = useState(0);
 
+  useImperativeHandle(ref, () => ({
+    getDraftState: () => ({ answers: getValues(), subStep }),
+  }), [getValues, subStep]);
+
   // Enrichment: apply data-driven smart defaults (q.default) once the questionnaire
   // loads, without ever clobbering input the user may already have typed.
+  // Resuming seeds from initialValues (server/draft) which override questionnaire defaults.
   const defaultsAppliedRef = useRef(false);
   useEffect(() => {
     if (!questionnaire || defaultsAppliedRef.current) return;
@@ -60,9 +84,12 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
         if (q.default) defaults[q.id] = q.default;
       }
     }
-    reset(defaults);
+    reset({ ...defaults, ...initialValues });
     defaultsAppliedRef.current = true;
-  }, [questionnaire, reset]);
+    // A submitted pre-diagnosis resumes at the review sub-step; otherwise honor the
+    // draft's group index (or start at the first group).
+    setSubStep(startAtReview ? questionnaire.groups.length : (initialSubStep ?? 0));
+  }, [questionnaire, reset, initialValues, initialSubStep, startAtReview]);
 
   useEffect(() => {
     onDirtyChange(isDirty);
@@ -88,6 +115,12 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
   /** Whether the current group has any *required* field still empty. */
   function groupHasUnfilledRequired(group: QuestionGroup): boolean {
     return group.questions.some((q) => q.required && !String((values as Record<string, string>)[q.id] ?? '').trim());
+  }
+
+  /** Persist current answers + target sub-step before navigating (Siguiente/Anterior/Revisar). */
+  function goToSubStep(nextSubStep: number) {
+    onProgressSave?.(getValues(), nextSubStep);
+    setSubStep(nextSubStep);
   }
 
   function renderQuestion(q: Question) {
@@ -253,7 +286,7 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
         <div className="shrink-0 pt-4 border-t border-app-border flex justify-between">
           <button
             type="button"
-            onClick={() => setSubStep((s) => s - 1)}
+            onClick={() => goToSubStep(subStep - 1)}
             className="px-4 py-2 border border-app-border rounded-lg text-sm font-medium text-app-muted hover:text-app-text hover:bg-app-bg transition-colors"
           >
             Anterior
@@ -341,7 +374,7 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
         {subStep > 0 ? (
           <button
             type="button"
-            onClick={() => setSubStep((s) => s - 1)}
+            onClick={() => goToSubStep(subStep - 1)}
             className="px-4 py-2 border border-app-border rounded-lg text-sm font-medium text-app-muted hover:text-app-text hover:bg-app-bg transition-colors"
           >
             Anterior
@@ -351,7 +384,7 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
         )}
         <button
           type="button"
-          onClick={() => setSubStep((s) => s + 1)}
+          onClick={() => goToSubStep(subStep + 1)}
           disabled={nextDisabled}
           className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 disabled:opacity-50 flex items-center gap-2"
         >
@@ -361,4 +394,5 @@ export function StepPreDiagnosis({ processId, isoStandard, onDone, onDirtyChange
       </div>
     </div>
   );
-}
+  },
+);

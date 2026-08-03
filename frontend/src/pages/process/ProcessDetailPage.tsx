@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { FileText, ClipboardCheck, BarChart3, ArrowLeft, CheckCircle, RotateCcw } from 'lucide-react';
 import { useProcess } from '../../hooks/useProcess';
+import { useFindings } from '../../hooks/usePlan';
 import { useCompleteProcess, useReopenProcess } from '../../hooks/useProcesses';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ErrorState } from '../../components/ui/ErrorState';
@@ -11,10 +12,21 @@ export const ProcessDetailPage = () => {
   const { processId } = useParams();
 
   const { data: process, isLoading, isError, error, refetch } = useProcess(processId);
+  const { data: findings } = useFindings(processId ?? null);
   const completeProcess = useCompleteProcess();
   const reopenProcess = useReopenProcess();
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showReopenConfirm, setShowReopenConfirm] = useState(false);
+
+  const preDiagnosisDone =
+    !!process?.pre_diagnosis && Object.keys(process.pre_diagnosis).length > 0;
+  const diagnosisDone = (!!findings?.answers && Object.keys(findings.answers).length > 0)
+    || process?.status === 'plan_ready';
+  const hasPlan = process?.status === 'plan_ready';
+
+  let ctaLabel = 'Iniciar diagnóstico';
+  if (hasPlan) ctaLabel = 'Ver plan';
+  else if (preDiagnosisDone && !diagnosisDone) ctaLabel = 'Continuar diagnóstico';
 
   if (isLoading) {
     return (
@@ -117,10 +129,10 @@ export const ProcessDetailPage = () => {
             Evalúa el estado actual de tu empresa frente a los requisitos ISO.
           </p>
           <Link
-            to={`/processes/${processId}/diagnose`}
+            to={`/processes/new?processId=${processId}`}
             className="w-full py-2 px-4 bg-app-primary text-white rounded-lg font-medium hover:bg-app-primary/90 transition-colors text-center"
           >
-            Iniciar Diagnóstico
+            {ctaLabel}
           </Link>
         </div>
 

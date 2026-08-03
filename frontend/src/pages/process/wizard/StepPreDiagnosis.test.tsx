@@ -210,4 +210,66 @@ describe('StepPreDiagnosis', () => {
     fireEvent.click(anterior);
     expect(screen.getByText('Perfil')).toBeInTheDocument();
   });
+
+  it('seeds fields from initialValues (resume mode) overriding questionnaire defaults', () => {
+    render(
+      <StepPreDiagnosis
+        processId="p-1"
+        isoStandard={ISO}
+        onDone={vi.fn()}
+        onDirtyChange={vi.fn()}
+        initialValues={{ q1: 'Carla' }}
+      />,
+    );
+    expect(screen.getByPlaceholderText('Nombre')).toHaveValue('Carla');
+  });
+
+  it('lands on the review sub-step when startAtReview is set', () => {
+    render(
+      <StepPreDiagnosis
+        processId="p-1"
+        isoStandard={ISO}
+        onDone={vi.fn()}
+        onDirtyChange={vi.fn()}
+        initialValues={{ q1: 'Ana', q3: 'Avanzado' }}
+        startAtReview
+      />,
+    );
+    // Review step renders the submission button and shows the seeded answers.
+    expect(screen.getByRole('button', { name: /Enviar pre-diagnóstico/i })).toBeInTheDocument();
+    expect(screen.getByText('Ana')).toBeInTheDocument();
+  });
+
+  it('calls onProgressSave with current answers + target sub-step on Siguiente', () => {
+    const onProgressSave = vi.fn();
+    render(
+      <StepPreDiagnosis
+        processId="p-1"
+        isoStandard={ISO}
+        onDone={vi.fn()}
+        onDirtyChange={vi.fn()}
+        onProgressSave={onProgressSave}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Ana' } });
+    fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
+    expect(onProgressSave).toHaveBeenCalledWith(expect.objectContaining({ q1: 'Ana' }), 1);
+  });
+
+  it('calls onProgressSave on Anterior transitions', () => {
+    const onProgressSave = vi.fn();
+    render(
+      <StepPreDiagnosis
+        processId="p-1"
+        isoStandard={ISO}
+        onDone={vi.fn()}
+        onDirtyChange={vi.fn()}
+        onProgressSave={onProgressSave}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Ana' } });
+    fireEvent.click(screen.getByRole('button', { name: /Siguiente/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Anterior/i }));
+    expect(onProgressSave).toHaveBeenLastCalledWith(expect.objectContaining({ q1: 'Ana' }), 0);
+  });
 });
