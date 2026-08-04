@@ -81,6 +81,11 @@ variable "ses_sender_email" {
   description = "Verified SES sender email address for welcome emails"
   type        = string
   default     = ""
+
+  validation {
+    condition     = !var.email_enabled || (var.ses_sender_email != "" && can(regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", var.ses_sender_email)))
+    error_message = "ses_sender_email must be a non-empty valid email address when email_enabled is true."
+  }
 }
 
 variable "email_enabled" {

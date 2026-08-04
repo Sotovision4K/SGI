@@ -67,19 +67,19 @@ module "cognito" {
   environment  = var.environment
   project_name = var.project_name
 
-  # Use dynamic CloudFront domain for callbacks; fall back to localhost on first apply
-  callback_urls = module.frontend.cloudfront_domain != "" ? [
-    "https://${module.frontend.cloudfront_domain}/auth/signin",
-    "https://${module.frontend.cloudfront_domain}/"
-  ] : [
+  # Always register localhost for local dev; union with CloudFront once the domain exists.
+  callback_urls = concat([
     "http://localhost:5173/auth/signin",
-    "http://localhost:5173/"
-  ]
-  logout_urls = module.frontend.cloudfront_domain != "" ? [
-    "https://${module.frontend.cloudfront_domain}/auth/signin"
-  ] : [
-    "http://localhost:5173/auth/signin"
-  ]
+    "http://localhost:5173/",
+  ], module.frontend.cloudfront_domain != "" ? [
+    "https://${module.frontend.cloudfront_domain}/auth/signin",
+    "https://${module.frontend.cloudfront_domain}/",
+  ] : [])
+  logout_urls = concat([
+    "http://localhost:5173/auth/signin",
+  ], module.frontend.cloudfront_domain != "" ? [
+    "https://${module.frontend.cloudfront_domain}/auth/signin",
+  ] : [])
 
   post_signup_trigger_arn = module.trigger.post_signup_lambda_arn
 }

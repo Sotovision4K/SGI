@@ -25,9 +25,10 @@ export function NewProcessWizardPage() {
   const resume = useProcess(resumeProcessId ?? undefined);
   const resumePlan = usePlan(resumeProcessId ?? null);
 
+  const processData = resume?.data;
   const preDiagnosisDone =
-    !!resume?.pre_diagnosis && Object.keys(resume.pre_diagnosis).length > 0;
-  const hasPlan = resume?.status === 'plan_ready';
+    !!processData?.pre_diagnosis && Object.keys(processData.pre_diagnosis).length > 0;
+  const hasPlan = processData?.status === 'plan_ready';
   const resumeFindings = useFindings(preDiagnosisDone ? resumeProcessId ?? null : null);
 
   const [step, setStep] = useState<Step>(0);
@@ -42,11 +43,11 @@ export function NewProcessWizardPage() {
   const findingsRef = useRef<StepFindingsHandle>(null);
 
   const processId = resumeProcessId ?? createdProcessId;
-  const isoStandard = resume?.iso_standard ?? createdIso;
+  const isoStandard = processData?.iso_standard ?? createdIso;
 
   // Resume landing step, derived from server state + draft (never re-run step 0,
   // which would create a duplicate process; never land on step 3 without a plan).
-  const loadedDraft = resumeProcessId && resume ? loadDraft(resumeProcessId) : null;
+  const loadedDraft = resumeProcessId && processData ? loadDraft(resumeProcessId) : null;
   const serverStep: Step = hasPlan ? 3 : preDiagnosisDone ? 1 : 0;
   const draftStep = loadedDraft?.step ?? 0;
   const landingStep: Step = resumeProcessId
@@ -57,7 +58,7 @@ export function NewProcessWizardPage() {
 
   // Adjust state during render (React's recommended pattern): apply the resume
   // landing step once per processId as soon as server data is available.
-  if (resumeProcessId && resume && !resumeApplied) {
+  if (resumeProcessId && processData && !resumeApplied) {
     setResumeApplied(true);
     setStep(landingStep);
   }
@@ -115,8 +116,8 @@ export function NewProcessWizardPage() {
 
   // Resume-mode seeding precedence: server > draft > questionnaire defaults.
   const initialPreDiagnosis =
-    (resume?.pre_diagnosis && Object.keys(resume.pre_diagnosis).length > 0
-      ? resume.pre_diagnosis
+    (processData?.pre_diagnosis && Object.keys(processData.pre_diagnosis).length > 0
+      ? processData.pre_diagnosis
       : loadedDraft?.preDiagnosis) ?? undefined;
   const initialFindings =
     (resumeFindings.data?.answers && Object.keys(resumeFindings.data.answers).length > 0

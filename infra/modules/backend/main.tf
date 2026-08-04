@@ -28,6 +28,7 @@ resource "aws_iam_role_policy_attachment" "lambda_basic" {
 # emails can only be sent to verified addresses.
 # Verify recipient addresses in AWS Console > SES > Verified identities.
 resource "aws_sesv2_email_identity" "sender" {
+  count          = var.email_enabled ? 1 : 0
   email_identity = var.ses_sender_email
 }
 
@@ -65,7 +66,7 @@ resource "aws_iam_role_policy" "lambda_ses" {
           "ses:SendEmail",
           "ses:SendRawEmail"
         ]
-        Resource = aws_sesv2_email_identity.sender.arn
+        Resource = var.email_enabled ? aws_sesv2_email_identity.sender[0].arn : "*"
       }
     ]
   })
