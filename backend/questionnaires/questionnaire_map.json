@@ -1,0 +1,98 @@
+{
+  "_comment": "questionnaire_map.json — Single source of truth for bucket split + Spanish prompt labels. DB stores English answers; this file provides the Spanish es_label for prompt injection via f-strings.",
+  "buckets": {
+    "B1": { "name": "Liderazgo",           "groups": ["liderazgo"] },
+    "B2": { "name": "Contexto y Apoyo",    "groups": ["contexto", "planificacion", "apoyo"] },
+    "B3": { "name": "Operación y Mejora",  "groups": ["operacion", "evaluacion", "mejora"] }
+  },
+  "iso9001": [
+    { "question_id": "q_main_processes",        "es_label": "Procesos principales del negocio",                  "clause": "4.1",  "group": "contexto",     "bucket": "B2" },
+    { "question_id": "q_stakeholders",           "es_label": "Partes interesadas clave",                         "clause": "4.2",  "group": "contexto",     "bucket": "B2" },
+
+    { "question_id": "q_leadership_commitment",  "es_label": "Compromiso de la dirección con la calidad",        "clause": "5.1",  "group": "liderazgo",    "bucket": "B1" },
+    { "question_id": "q_quality_policy",         "es_label": "Política de calidad documentada y comunicada",     "clause": "5.2",  "group": "liderazgo",    "bucket": "B1" },
+    { "question_id": "q_roles_responsibilities", "es_label": "Roles y responsabilidades definidos",              "clause": "5.3",  "group": "liderazgo",    "bucket": "B1" },
+
+    { "question_id": "q_risks_identified",       "es_label": "Identificación de riesgos y oportunidades",        "clause": "6.1",  "group": "planificacion", "bucket": "B2" },
+    { "question_id": "q_quality_objectives",     "es_label": "Objetivos de calidad medibles",                    "clause": "6.2",  "group": "planificacion", "bucket": "B2" },
+    { "question_id": "q_change_management",      "es_label": "Gestión planificada de cambios",                   "clause": "6.3",  "group": "planificacion", "bucket": "B2" },
+
+    { "question_id": "q_resources",              "es_label": "Determinación y provisión de recursos",            "clause": "7.1",  "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_competence",             "es_label": "Competencia del personal y capacitación",          "clause": "7.2",  "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_communication",          "es_label": "Estrategia de comunicación interna y externa",     "clause": "7.4",  "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_documented_info",        "es_label": "Gestión de la información documentada",            "clause": "7.5",  "group": "apoyo",        "bucket": "B2" },
+
+    { "question_id": "q_operational_planning",   "es_label": "Planificación operacional documentada",            "clause": "8.1",  "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_customer_requirements",  "es_label": "Determinación y revisión de requisitos del cliente","clause": "8.2", "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_design_control",         "es_label": "Control de procesos de diseño y desarrollo",      "clause": "8.3",  "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_supplier_control",       "es_label": "Evaluación y control de proveedores externos",    "clause": "8.4",  "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_production_control",     "es_label": "Control planificado de producción o servicio",    "clause": "8.5",  "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_nonconforming_outputs",  "es_label": "Identificación y control de salidas no conformes","clause": "8.7",  "group": "operacion",    "bucket": "B3" },
+
+    { "question_id": "q_monitoring",             "es_label": "Monitoreo y medición de procesos y producto",     "clause": "9.1",  "group": "evaluacion",   "bucket": "B3" },
+    { "question_id": "q_internal_audits",        "es_label": "Auditorías internas periódicas",                   "clause": "9.2",  "group": "evaluacion",   "bucket": "B3" },
+    { "question_id": "q_management_review",      "es_label": "Revisiones por la dirección documentadas",         "clause": "9.3",  "group": "evaluacion",   "bucket": "B3" },
+
+    { "question_id": "q_continuous_improvement", "es_label": "Iniciativas formales de mejora continua",         "clause": "10.1", "group": "mejora",       "bucket": "B3" },
+    { "question_id": "q_corrective_actions",     "es_label": "Gestión de acciones correctivas",                 "clause": "10.2", "group": "mejora",       "bucket": "B3" },
+    { "question_id": "q_main_pain_points",       "es_label": "Principales quejas o problemas actuales",         "clause": "10.3", "group": "mejora",       "bucket": "B3" }
+  ],
+  "iso14001": [
+    { "question_id": "q_location",                    "es_label": "Zona geográfica de operación",                              "clause": "4.1",    "group": "contexto",     "bucket": "B2" },
+    { "question_id": "q_stakeholders",                 "es_label": "Partes interesadas clave en temas ambientales",            "clause": "4.2",    "group": "contexto",     "bucket": "B2" },
+
+    { "question_id": "q_leadership_commitment",        "es_label": "Compromiso de la dirección con la gestión ambiental",      "clause": "5.1",    "group": "liderazgo",    "bucket": "B1" },
+    { "question_id": "q_environmental_policy",         "es_label": "Política ambiental documentada y comunicada",              "clause": "5.2",    "group": "liderazgo",    "bucket": "B1" },
+    { "question_id": "q_roles_responsibilities",       "es_label": "Roles y responsabilidades ambientales",                    "clause": "5.3",    "group": "liderazgo",    "bucket": "B1" },
+
+    { "question_id": "q_aspects_identified",           "es_label": "Identificación de aspectos e impactos ambientales",        "clause": "6.1.2",  "group": "planificacion", "bucket": "B2" },
+    { "question_id": "q_compliance_obligations",       "es_label": "Requisitos legales ambientales aplicables",                "clause": "6.1.3",  "group": "planificacion", "bucket": "B2" },
+    { "question_id": "q_environmental_objectives",     "es_label": "Objetivos ambientales medibles",                           "clause": "6.2",    "group": "planificacion", "bucket": "B2" },
+
+    { "question_id": "q_resources",                    "es_label": "Recursos destinados a la gestión ambiental",               "clause": "7.1",    "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_competence_awareness",         "es_label": "Capacitación del personal en temas ambientales",           "clause": "7.2",    "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_internal_external_communication","es_label": "Comunicación ambiental interna y externa",                "clause": "7.3",    "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_documented_info",              "es_label": "Gestión de registros y documentos ambientales",            "clause": "7.5",    "group": "apoyo",        "bucket": "B2" },
+
+    { "question_id": "q_operational_controls",         "es_label": "Controles operacionales ambientales implementados",        "clause": "8.1",    "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_emergency_response",           "es_label": "Procedimientos de respuesta a emergencias ambientales",    "clause": "8.2",    "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_waste_management",             "es_label": "Gestión de residuos",                                     "clause": "8.1",    "group": "operacion",    "bucket": "B3" },
+
+    { "question_id": "q_monitoring",                   "es_label": "Monitoreo de indicadores ambientales",                    "clause": "9.1",    "group": "evaluacion",   "bucket": "B3" },
+    { "question_id": "q_compliance_evaluation",        "es_label": "Evaluación del cumplimiento legal ambiental",             "clause": "9.1.2",  "group": "evaluacion",   "bucket": "B3" },
+    { "question_id": "q_internal_audits",              "es_label": "Auditorías internas ambientales",                          "clause": "9.2",    "group": "evaluacion",   "bucket": "B3" },
+
+    { "question_id": "q_continuous_improvement",       "es_label": "Iniciativas de mejora ambiental documentadas",            "clause": "10.1",   "group": "mejora",       "bucket": "B3" },
+    { "question_id": "q_corrective_actions",           "es_label": "Acciones correctivas ante no conformidades ambientales",  "clause": "10.2",   "group": "mejora",       "bucket": "B3" },
+    { "question_id": "q_main_environmental_challenges","es_label": "Principales desafíos ambientales",                         "clause": "10.1",   "group": "mejora",       "bucket": "B3" }
+  ],
+  "iso45001": [
+    { "question_id": "q_high_risk_activities",         "es_label": "Actividades de alto riesgo",                               "clause": "4.1",    "group": "contexto",     "bucket": "B2" },
+    { "question_id": "q_workers_involved",             "es_label": "Inclusión de contratistas en gestión de SST",              "clause": "4.2",    "group": "contexto",     "bucket": "B2" },
+
+    { "question_id": "q_leadership_commitment",        "es_label": "Compromiso de la dirección con la SST",                    "clause": "5.1",    "group": "liderazgo",    "bucket": "B1" },
+    { "question_id": "q_sst_policy",                   "es_label": "Política de SST documentada y comunicada",                 "clause": "5.2",    "group": "liderazgo",    "bucket": "B1" },
+    { "question_id": "q_worker_consultation",          "es_label": "Consulta y participación de trabajadores en SST",          "clause": "5.4",    "group": "liderazgo",    "bucket": "B1" },
+
+    { "question_id": "q_hazards_identified",           "es_label": "Identificación de peligros y riesgos para SST",            "clause": "6.1.2",  "group": "planificacion", "bucket": "B2" },
+    { "question_id": "q_legal_requirements",           "es_label": "Requisitos legales de SST aplicables",                     "clause": "6.1.3",  "group": "planificacion", "bucket": "B2" },
+    { "question_id": "q_sst_objectives",               "es_label": "Objetivos de SST medibles",                                "clause": "6.2",    "group": "planificacion", "bucket": "B2" },
+
+    { "question_id": "q_resources",                    "es_label": "Recursos destinados a la gestión de SST",                  "clause": "7.1",    "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_competence_training",          "es_label": "Capacitación del personal en SST",                         "clause": "7.2",    "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_communication",                "es_label": "Comunicación de SST interna y externa",                    "clause": "7.4",    "group": "apoyo",        "bucket": "B2" },
+    { "question_id": "q_documented_info",              "es_label": "Gestión de registros y documentos de SST",                 "clause": "7.5",    "group": "apoyo",        "bucket": "B2" },
+
+    { "question_id": "q_operational_controls",         "es_label": "Controles operacionales de SST implementados",             "clause": "8.1",    "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_emergency_response",           "es_label": "Procedimientos de respuesta a emergencias",                "clause": "8.2",    "group": "operacion",    "bucket": "B3" },
+    { "question_id": "q_incident_investigation",       "es_label": "Investigación de incidentes y accidentes laborales",       "clause": "8.1.2",  "group": "operacion",    "bucket": "B3" },
+
+    { "question_id": "q_monitoring",                   "es_label": "Monitoreo de indicadores de SST",                          "clause": "9.1",    "group": "evaluacion",   "bucket": "B3" },
+    { "question_id": "q_compliance_evaluation",        "es_label": "Evaluación del cumplimiento legal en SST",                 "clause": "9.1.2",  "group": "evaluacion",   "bucket": "B3" },
+    { "question_id": "q_internal_audits",              "es_label": "Auditorías internas de SST",                               "clause": "9.2",    "group": "evaluacion",   "bucket": "B3" },
+
+    { "question_id": "q_continuous_improvement",       "es_label": "Iniciativas formales de mejora continua en SST",           "clause": "10.1",   "group": "mejora",       "bucket": "B3" },
+    { "question_id": "q_corrective_actions",           "es_label": "Acciones correctivas ante incidentes y no conformidades",  "clause": "10.2",   "group": "mejora",       "bucket": "B3" },
+    { "question_id": "q_main_safety_challenges",       "es_label": "Principales riesgos o desafíos de seguridad",              "clause": "10.1",   "group": "mejora",       "bucket": "B3" }
+  ]
+}

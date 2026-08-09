@@ -1,5 +1,4 @@
 import json
-import re
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -9,97 +8,39 @@ from fastapi import Depends
 from src.config.settings import Settings, get_settings
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.adapters.llm.llm_port import LLMPort
+# Q: Where do the injection mitigations live now?
+# A: In the shared `src.services.sanitizer` module so both this adapter and the
+#    new prompt builder reuse them (avoids drift between two filter copies).
+# Decision: Import + re-export for backwards compatibility with existing callers
+#           and tests that still `from ...anthropic_adapter import sanitize_findings`.
+from src.services.sanitizer import (
+    INJECTION_PATTERNS as _INJECTION_PATTERNS,
+    MAX_FREE_TEXT_LENGTH as _MAX_FREE_TEXT_LENGTH,
+    sanitize_findings,
+    sanitize_markdown,
+)
 
 if TYPE_CHECKING:
     pass
 
 
-_PROMPTS_DIR = Path(__file__).parent / "prompts"
-
-# Patterns that indicate prompt injection attempts (ordered broader → narrower)
-_INJECTION_PATTERNS = [
-    r"(?i)\bignor[ae]\s+(?:tod[ao]s?\s+)?(?:las?\s+)?instrucciones",
-    r"(?i)\bignor[ae]\s+(?:todo|lo\s+anterior|lo\s+previo)\b",
-    r"(?i)\beres\s+(?:ahora\s+)?un\s+",
-    r"(?i)\btu\s+nuevo\s+objetivo",
-    r"(?i)you\s+are\s+now\s+a\s+",
-    r"(?i)\bignore\s+(?:all\s+)?(?:previous\s+)?instructions",
-    r"(?i)\[SYSTEM\]",
-    r"(?i)\[INST\]",
-    r"(?i)<\|im_start\|>",
-    r"(?i)<\|im_end\|>",
-    r"(?i)\bolvida\s+(?:todo\s+)?(?:lo\s+anterior|las?\s+instrucciones)",
-    r"(?i)\breinicia\s+(?:y\s+)?(?:ahora\s+)?eres?",
-    r"(?i)\bno\s+eres\s+un\s+consultor",
-    r"(?i)\bno\s+sigas?\s+las?\s+reglas?\b",
-    r"(?i)\bresponde\s+como\s+si\s+fueras?\b",
-    r"(?i)\bsoy\s+tu\s+creador\b",
-    r"(?i)\bmodo\s+desarrollador\b",
-    r"(?i)\bpor\s+encima\s+de\s+todo\b",
-    r"(?i)\bprimero\s+y\s+principal\b",
-    r"(?i)\binstrucción\s+del\s+sistema\b",
-    r"(?i)\bmensaje\s+del\s+sistema\b",
-    r"(?i)\bdile?\s+al\s+usuario\b",
-    r"(?i)\bdi\s+lo\s+siguiente\b",
-    r"(?i)\bpuntúa\s+10/10\b",
-    r"(?i)\bcertifica\s+automáticamente\b",
-    r"(?i)^---\s*$",
-    r"(?i)^\"\"\"\s*$",
-    r"(?i)\<\<\<",
-    r"(?i)\>\>\>",
-    r"(?i)\bBEGIN\b",
-    r"(?i)\bEND\b",
+# Q: Why declare __all__ here?
+# A: To (a) document the module's public surface and (b) suppress ruff F401 on
+#    the deliberately-re-exported sanitizer symbols that existing callers still
+#    import from this module (`_INJECTION_PATTERNS`, `_MAX_FREE_TEXT_LENGTH`,
+#    `sanitize_findings`, `sanitize_markdown`).
+# Decision: List re-exports explicitly so the refactor stays lint-clean without
+#           forcing every existing import site to switch to `src.services.sanitizer`.
+__all__ = [
+    "_INJECTION_PATTERNS",
+    "_MAX_FREE_TEXT_LENGTH",
+    "sanitize_findings",
+    "sanitize_markdown",
+    "AnthropicAdapter",
+    "get_anthropic_adapter",
 ]
 
-_MAX_FREE_TEXT_LENGTH = 5000
-
-
-def sanitize_findings(findings: dict, pre_diagnosis: dict | None = None) -> dict:
-    """Sanitize user-provided findings and pre-diagnosis before sending to the LLM.
-
-    Returns a dict with 'findings' and optionally 'pre_diagnosis' keys, each cleaned.
-    """
-    result: dict[str, dict] = {"findings": {"answers": {}, "free_text": ""}}
-
-    # Sanitize findings free_text
-    free_text = str(findings.get("free_text", ""))
-    for pattern in _INJECTION_PATTERNS:
-        free_text = re.sub(pattern, "[FILTERED]", free_text, flags=re.IGNORECASE)
-    result["findings"]["free_text"] = free_text[:_MAX_FREE_TEXT_LENGTH]
-
-    # Sanitize findings answers
-    answers = findings.get("answers", {})
-    result["findings"]["answers"] = {}
-    if isinstance(answers, dict):
-        for key, value in answers.items():
-            cleaned_value = str(value)
-            for pattern in _INJECTION_PATTERNS:
-                cleaned_value = re.sub(pattern, "[FILTERED]", cleaned_value, flags=re.IGNORECASE)
-            result["findings"]["answers"][key] = cleaned_value
-
-    # Sanitize pre_diagnosis answers
-    if pre_diagnosis is not None:
-        result["pre_diagnosis"] = {}
-        if isinstance(pre_diagnosis, dict):
-            for key, value in pre_diagnosis.items():
-                cleaned_value = str(value)
-                for pattern in _INJECTION_PATTERNS:
-                    cleaned_value = re.sub(pattern, "[FILTERED]", cleaned_value, flags=re.IGNORECASE)
-                result["pre_diagnosis"][key] = cleaned_value
-
-    return result
-
-
-def sanitize_markdown(md: str) -> str:
-    """Sanitize LLM-generated markdown output.
-
-    Removes image syntax, raw HTML tags, and other potentially dangerous content.
-    """
-    # Remove markdown image syntax: ![alt](url)
-    md = re.sub(r'!\[.*?\]\(.*?\)', '[IMAGE REMOVED]', md)
-    # Remove raw HTML tags
-    md = re.sub(r'<[^>]*>', '', md)
-    return md
+_PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 
 def _load_system_prompt(iso_standard: str) -> str:

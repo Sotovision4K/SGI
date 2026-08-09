@@ -1,4 +1,5 @@
 import json
+import logging
 import uuid
 
 from sqlmodel import SQLModel, Field, select
@@ -7,7 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task, TaskPriority
+from src.domain.entities.audit_log import AuditLogLLM
 from src.adapters.db.user_repository import get_engine
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessTable(SQLModel, table=True):
@@ -55,10 +59,50 @@ class TaskTable(SQLModel, table=True):
     sort_order: int = Field(default=0)
 
 
+class AuditLogLlmTable(SQLModel, table=True):
+    """SQLModel table for the `audit_logs_llm` table (spec §6).
+
+    # Q: Why store JSONB as str instead of a native JSON/JSONB column type?
+    # A: SQLite (used in local tests) has no native JSONB type; using str keeps
+    #    the model portable across SQLite and Postgres while remaining
+    #    SQLite-compatible. The repository serializes/deserializes at the
+    #    boundary. Postgres accepts TEXT for JSON content equally well.
+    # Decision: Store request_payload and response_json as JSON strings, and
+    # created_at as an ISO 8601 string — mirroring the existing ProcessTable /
+    # FindingTable convention (see pre_diagnosis / answers columns).
+    """
+
+    __tablename__ = "audit_logs_llm"
+
+    # Q: Which fields are indexed?
+    # A: process_id is the primary lookup key for audit history per generation
+    #    run — index it. job_id is optional but also useful for per-job audit;
+    #    leave unindexed for now (spec doesn't require it).
+    # Decision: index process_id only, mirroring FindingTable's process_id index.
+    id: uuid.UUID = Field(primary_key=True, default_factory=uuid.uuid4)
+    process_id: uuid.UUID = Field(foreign_key="processes.id", index=True)
+    job_id: uuid.UUID | None = Field(default=None, nullable=True)
+    bucket: str | None = Field(default=None, max_length=10, nullable=True)
+    attempt: int = Field(default=1)
+    model: str = Field(default="", max_length=50)
+    iso_standard: str = Field(default="", max_length=20)
+    request_payload: str = Field(default="{}")  # JSON string (SQLite-compatible)
+    response_json: str | None = Field(default=None, nullable=True)
+    input_tokens: int = Field(default=0)
+    output_tokens: int = Field(default=0)
+    latency_ms: int = Field(default=0)
+    status: str = Field(default="success", max_length=20)
+    error: str | None = Field(default=None, nullable=True)
+    created_at: str  # stored as ISO 8601 string
+
+
 class ProcessRepository:
     """Repository for Process, Finding, Plan, and Task tables.
 
     Co-located because they share a tight lifecycle and live in the same DB.
+
+    Also hosts the LLM audit-log writer (`insert_audit_log_llm`) since audit
+    rows reference `processes.id`.
     """
 
     def __init__(self, database_url: str) -> None:
@@ -221,6 +265,69 @@ class ProcessRepository:
             tasks = [self._task_to_domain(t) for t in task_rows]
             return self._plan_to_domain(plan_row, tasks)
 
+    # ---- LLM audit log -----------------------------------------------------
+
+    async def insert_audit_log_llm(
+        self,
+        audit: AuditLogLLM,
+    ) -> AuditLogLLM:
+        """Insert an LLM audit log row. Never raises — logs and swallows on failure.
+
+        # Q: Why must this method never raise?
+        # A: Per spec §6, an AuditLogWriteError must never break generation.
+        #    The audit log is an observational side-effect; a DB failure during
+        #    audit recording must not abort the plan-generation pipeline.
+        # Decision: Wrap the entire DB interaction in a try/except, log the
+        # failure, and return the input entity unchanged as a best-effort
+        # result. This keeps callers' shape identical to the success path.
+        """
+        # Q: Why serialize request_payload/response_json with ensure_ascii=False?
+        # A: Preserve accented characters (Spanish content) as-is instead of
+        #    escaping to \\uXXXX — smaller payloads and readable in DB queries.
+        # Decision: Match the convention used for pre_diagnosis/answers columns.
+        try:
+            row = AuditLogLlmTable(
+                id=audit.id,
+                process_id=audit.process_id,
+                job_id=audit.job_id,
+                bucket=audit.bucket,
+                attempt=audit.attempt,
+                model=audit.model,
+                iso_standard=audit.iso_standard,
+                request_payload=json.dumps(
+                    audit.request_payload, ensure_ascii=False
+                ),
+                response_json=(
+                    json.dumps(audit.response_json, ensure_ascii=False)
+                    if audit.response_json is not None
+                    else None
+                ),
+                input_tokens=audit.input_tokens,
+                output_tokens=audit.output_tokens,
+                latency_ms=audit.latency_ms,
+                status=audit.status.value,
+                error=audit.error,
+                created_at=audit.created_at.isoformat(),
+            )
+            async with AsyncSession(self._engine) as session:
+                session.add(row)
+                await session.commit()
+                await session.refresh(row)
+            return self._audit_log_to_domain(row)
+        except Exception as exc:
+            # Q: Should we re-raise or swallow?
+            # A: Swallow. The audit must never break generation. Log at
+            #    error level so failures are observable in CloudWatch.
+            # Decision: Best-effort — return the input entity so the caller's
+            # handle remains usable.
+            logger.error(
+                "Failed to insert LLM audit log for process %s attempt %s: %s",
+                audit.process_id,
+                audit.attempt,
+                exc,
+            )
+            return audit
+
     # ---- Mappers ----------------------------------------------------------
 
     @staticmethod
@@ -243,16 +350,30 @@ class ProcessRepository:
 
     @staticmethod
     def _finding_to_domain(row: FindingTable) -> Finding:
+        from datetime import datetime, timezone
         import json
         try:
             answers = json.loads(row.answers) if row.answers else {}
         except json.JSONDecodeError:
             answers = {}
+        # Q: Why pass updated_at here when other *_to_domain mappers drop it?
+        # A: Finding.updated_at is business data — the frontend consumes it
+        #    via GET /findings to show "Last updated: <timestamp>". Unlike
+        #    Task.updated_at (which is pure DB metadata), this field is
+        #    user-facing and must carry the actual DB value.
+        # Decision: Map it from the DB row so the response is accurate, not
+        #    the factory default (current time of the read request).
+        updated_at_dt = (
+            datetime.fromisoformat(row.updated_at)
+            if row.updated_at
+            else datetime.now(timezone.utc)
+        )
         return Finding(
             id=row.id,
             process_id=row.process_id,
             answers=answers,
             free_text=row.free_text,
+            updated_at=updated_at_dt,
         )
 
     @staticmethod
@@ -277,4 +398,54 @@ class ProcessRepository:
             summary_md=row.summary_md,
             generated_at=datetime.fromisoformat(row.generated_at),
             tasks=tasks,
+        )
+
+    @staticmethod
+    def _audit_log_to_domain(row: AuditLogLlmTable) -> AuditLogLLM:
+        """Map an AuditLogLlmTable row back to the domain entity.
+
+        # Q: How are the JSON-string columns handled?
+        # A: request_payload/response_json are stored as JSON strings; parse
+        #    them back into dicts. On decode failure, fall back to {} / None so
+        #    a corrupt row never propagates as a raw string into the entity.
+        # Decision: Defensive deserialization — mirrors _finding_to_domain's
+        # JSONDecodeError handling for the answers column.
+        """
+        from datetime import datetime
+        from src.domain.entities.audit_log import AuditLogStatus
+
+        try:
+            request_payload = json.loads(row.request_payload) if row.request_payload else {}
+        except json.JSONDecodeError:
+            request_payload = {}
+
+        response_json = None
+        if row.response_json is not None:
+            try:
+                response_json = json.loads(row.response_json)
+            except json.JSONDecodeError:
+                response_json = None
+
+        try:
+            created_at = datetime.fromisoformat(row.created_at)
+        except (ValueError, TypeError):
+            from datetime import timezone as _tz
+            created_at = datetime.now(_tz.utc)
+
+        return AuditLogLLM(
+            id=row.id,
+            process_id=row.process_id,
+            job_id=row.job_id,
+            bucket=row.bucket,
+            attempt=row.attempt,
+            model=row.model,
+            iso_standard=row.iso_standard,
+            request_payload=request_payload,
+            response_json=response_json,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            latency_ms=row.latency_ms,
+            status=AuditLogStatus(row.status),
+            error=row.error,
+            created_at=created_at,
         )
