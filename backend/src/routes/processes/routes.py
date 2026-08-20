@@ -143,7 +143,7 @@ def _process_to_detail(process: Process, company_name: str | None) -> ProcessDet
     )
 
 
-# ---- Authorisation -----------------------------------------------------------
+# ---- Authorization -----------------------------------------------------------
 
 
 async def _require_process_owner(
@@ -191,18 +191,12 @@ class UpdatePreDiagnosisRequest(BaseModel):
 async def list_processes(
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
-    settings: Settings = Depends(get_settings),
     status: str | None = Query(None, enum=["active", "completed"]),
 ) -> ProcessListResponse:
     sub = current_user.get("sub")
     consultant_id = UUID(sub) if sub else None
-    processes = await repo.list_processes(consultant_id=consultant_id, status=status)
-    items: list[ProcessListItem] = []
-
-
-    for p in processes:
-        name = await _hydrate_company_name(p.company_id, settings)
-        items.append(_process_to_item(p, name))
+    rows = await repo.list_processes_with_company(consultant_id=consultant_id, status=status)
+    items = [_process_to_item(p, name) for p, name in rows]
     return ProcessListResponse(items=items, total=len(items))
 
 

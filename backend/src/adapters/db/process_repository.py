@@ -9,7 +9,7 @@ from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.domain.entities.audit_log import AuditLogLLM
-from src.adapters.db.user_repository import get_engine
+from src.adapters.db.user_repository import CompanyTable, get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +153,41 @@ class ProcessRepository:
                 stmt = stmt.where(ProcessTable.status == ProcessStatus.COMPLETED.value)
             rows = (await session.execute(stmt)).scalars().all()
             return [self._process_to_domain(r) for r in rows]
+
+    async def list_processes_with_company(
+        self,
+        consultant_id: uuid.UUID | None = None,
+        status: str | None = None,
+    ) -> list[tuple[Process, str | None]]:
+        """List processes with their company name in a single query.
+
+        Uses a correlated scalar subquery (LEFT-join semantics): every process
+        is returned even when its company row is missing, in which case the
+        name is None. This replaces the previous N+1 per-process hydration in
+        the routes layer.
+        """
+        if status not in (None, "active", "completed"):
+            raise ValueError(f"Invalid status filter: {status!r}")
+
+        company_name = (
+            select(CompanyTable.name)
+            .where(CompanyTable.company_id == ProcessTable.company_id)
+            .scalar_subquery()
+        )
+        stmt = (
+            select(ProcessTable, company_name.label("company_name"))
+            .order_by(ProcessTable.created_at.desc())
+        )
+        if consultant_id is not None:
+            stmt = stmt.where(ProcessTable.consultant_id == consultant_id)
+        if status == "active":
+            stmt = stmt.where(ProcessTable.status != ProcessStatus.COMPLETED.value)
+        elif status == "completed":
+            stmt = stmt.where(ProcessTable.status == ProcessStatus.COMPLETED.value)
+
+        async with AsyncSession(self._engine) as session:
+            rows = (await session.execute(stmt)).all()
+            return [(self._process_to_domain(r[0]), r[1]) for r in rows]
 
     async def update_process_status(self, process_id: uuid.UUID, status: ProcessStatus) -> None:
         from datetime import datetime, timezone

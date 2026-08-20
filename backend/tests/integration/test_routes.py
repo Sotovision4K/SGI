@@ -209,7 +209,7 @@ class TestQuestionnairesRoutes:
 class TestProcessesRoutes:
     def test_list_processes_returns_items(self, client):
         mock_repo = MagicMock()
-        mock_repo.list_processes = AsyncMock(return_value=[])
+        mock_repo.list_processes_with_company = AsyncMock(return_value=[])
 
         with patch(
             "src.routes.processes.routes.get_process_repository",
