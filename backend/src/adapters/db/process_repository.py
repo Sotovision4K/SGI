@@ -31,7 +31,7 @@ class FindingTable(SQLModel, table=True):
     __tablename__ = "findings"
 
     id: uuid.UUID = Field(primary_key=True)
-    process_id: uuid.UUID = Field(unique=True, index=True)
+    process_id: uuid.UUID = Field(unique=True, index=True, foreign_key="processes.id")
     answers: str = Field(default="{}")
     free_text: str = Field(default="")
     updated_at: str
@@ -41,7 +41,7 @@ class PlanTable(SQLModel, table=True):
     __tablename__ = "plans"
 
     id: uuid.UUID = Field(primary_key=True)
-    process_id: uuid.UUID = Field(unique=True, index=True)
+    process_id: uuid.UUID = Field(unique=True, index=True, foreign_key="processes.id")
     summary_md: str = Field(default="")
     generated_at: str
 
@@ -216,8 +216,12 @@ class ProcessRepository:
         import json
         from datetime import datetime, timezone
         async with AsyncSession(self._engine) as session:
-            row = await session.get(FindingTable, finding.process_id)
-            if row is None:
+            existing = (
+                await session.execute(
+                    select(FindingTable).where(FindingTable.process_id == finding.process_id)
+                )
+            ).scalar_one_or_none()
+            if existing is None:
                 row = FindingTable(
                     id=finding.id,
                     process_id=finding.process_id,
@@ -227,9 +231,10 @@ class ProcessRepository:
                 )
                 session.add(row)
             else:
-                row.answers = json.dumps(finding.answers, ensure_ascii=False)
-                row.free_text = finding.free_text
-                row.updated_at = datetime.now(timezone.utc).isoformat()
+                existing.answers = json.dumps(finding.answers, ensure_ascii=False)
+                existing.free_text = finding.free_text
+                existing.updated_at = datetime.now(timezone.utc).isoformat()
+                row = existing
             await session.commit()
             await session.refresh(row)
             return self._finding_to_domain(row)
@@ -237,7 +242,11 @@ class ProcessRepository:
     async def get_finding(self, process_id: uuid.UUID) -> Finding | None:
         import json
         async with AsyncSession(self._engine) as session:
-            row = await session.get(FindingTable, process_id)
+            row = (
+                await session.execute(
+                    select(FindingTable).where(FindingTable.process_id == process_id)
+                )
+            ).scalar_one_or_none()
             if row is None:
                 return None
             try:
@@ -257,7 +266,11 @@ class ProcessRepository:
         from datetime import datetime, timezone
         async with AsyncSession(self._engine) as session:
             # Wipe any existing plan + tasks for this process
-            existing = await session.get(PlanTable, plan.process_id)
+            existing = (
+                await session.execute(
+                    select(PlanTable).where(PlanTable.process_id == plan.process_id)
+                )
+            ).scalar_one_or_none()
             if existing is not None:
                 old_plan_id = existing.id
                 old_tasks = (await session.execute(
@@ -291,7 +304,11 @@ class ProcessRepository:
 
     async def get_plan(self, process_id: uuid.UUID) -> Plan | None:
         async with AsyncSession(self._engine) as session:
-            plan_row = await session.get(PlanTable, process_id)
+            plan_row = (
+                await session.execute(
+                    select(PlanTable).where(PlanTable.process_id == process_id)
+                )
+            ).scalar_one_or_none()
             if plan_row is None:
                 return None
             task_rows = (await session.execute(
