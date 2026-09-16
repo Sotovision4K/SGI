@@ -1,5 +1,6 @@
 {
   "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/deepseek-v4-pro",
   "agent": {
     "code-reviewer": {
       "description": "Reviews code for best practices and potential issues",

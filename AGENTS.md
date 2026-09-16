@@ -37,6 +37,7 @@ A pre-commit hook runs lint and typecheck on staged frontend/backend files. Inst
 - **React Compiler**: Enabled via `babel-plugin-react-compiler` - impacts build performance
 - **Zod v4**: Used for validation (not v3)
 - **Auth**: AWS Cognito via `react-oidc-context` - config in `.env` with `VITE_*` prefix
+- **Backend Python version**: pinned to **3.12**. Must match the Lambda runtime (`python3.12`), `setup-python` in `.github/workflows/backend.yml`, and `backend/.python-version`. Do NOT bump `backend/.python-version` without also updating the Lambda runtime — a mismatch makes the deployed zip contain the wrong `cpython-3XX` `.so` files and breaks every cold start with `Runtime.ImportModuleError`.
 
 ## Design System
 
