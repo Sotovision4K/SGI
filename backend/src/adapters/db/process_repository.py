@@ -57,6 +57,9 @@ class TaskTable(SQLModel, table=True):
     estimated_effort: str = Field(max_length=100, default="")
     owner_role: str = Field(max_length=100, default="")
     sort_order: int = Field(default=0)
+    source_clause: str = Field(default="")
+    require_document: bool = Field(default=False)
+    document_title: str | None = Field(default=None, max_length=200)
 
 
 class AuditLogLlmTable(SQLModel, table=True):
@@ -298,9 +301,12 @@ class ProcessRepository:
                     estimated_effort=task.estimated_effort,
                     owner_role=task.owner_role,
                     sort_order=task.sort_order,
+                    source_clause=task.source_clause,
+                    require_document=task.require_document,
+                    document_title=task.document_title,
                 ))
             await session.commit()
-            return self._plan_to_domain(plan_row, plan.tasks)
+            return plan
 
     async def get_plan(self, process_id: uuid.UUID) -> Plan | None:
         async with AsyncSession(self._engine) as session:
@@ -439,6 +445,9 @@ class ProcessRepository:
             estimated_effort=row.estimated_effort,
             owner_role=row.owner_role,
             sort_order=row.sort_order,
+            source_clause=row.source_clause,
+            require_document=row.require_document,
+            document_title=row.document_title,
         )
 
     @staticmethod

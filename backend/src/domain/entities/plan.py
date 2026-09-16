@@ -20,6 +20,9 @@ class Task(BaseModel):
     estimated_effort: str = Field(default="", max_length=100)
     owner_role: str = Field(default="", max_length=100)
     sort_order: int = 0
+    source_clause: str = ""          # ISO clause, server-filled from the producing bucket
+    require_document: bool = False   # whether this task needs a supporting document
+    document_title: str | None = None  # title of the required document (nullable)
 
     model_config = ConfigDict(from_attributes=True)
 

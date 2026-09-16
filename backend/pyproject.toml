@@ -32,6 +32,7 @@ dev = [
     "pytest-cov",
     "httpx",
     "ruff>=0.1.0",
+    "aiosqlite>=0.22.1",
 ]
 
 [tool.pytest.ini_options]

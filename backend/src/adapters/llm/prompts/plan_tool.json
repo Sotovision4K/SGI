@@ -34,9 +34,18 @@
             "owner_role": {
               "type": "string",
               "description": "Rol responsable sugerido (ej: 'Gerente de Calidad', 'Director General')."
+            },
+            "require_document": {
+              "type": "boolean",
+              "default": false,
+              "description": "Si la tarea requiere generar o actualizar un documento de soporte."
+            },
+            "document_title": {
+              "type": ["string", "null"],
+              "description": "Título del documento requerido; solo si require_document es true."
             }
           },
-          "required": ["title", "description", "priority", "estimated_effort", "owner_role"]
+          "required": ["title", "description", "priority", "estimated_effort", "owner_role", "require_document"]
         }
       }
     },
