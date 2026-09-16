@@ -3,12 +3,14 @@ import logging
 import uuid
 
 from sqlmodel import SQLModel, Field, select
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.domain.entities.audit_log import AuditLogLLM
+from src.domain.entities.plan_job import PlanJob, PlanJobStatus
 from src.adapters.db.user_repository import CompanyTable, get_engine
 
 logger = logging.getLogger(__name__)
@@ -99,8 +101,39 @@ class AuditLogLlmTable(SQLModel, table=True):
     created_at: str  # stored as ISO 8601 string
 
 
+class PlanJobTable(SQLModel, table=True):
+    """SQLModel table for the `plan_jobs` table (spec §6).
+
+    # Q: Why is process_id the primary key (not a synthetic id)?
+    # A: 1:1 with `processes` — one job row per process at a time. The enqueue
+    #    endpoint returns an idempotent 202 while a job is queued/running, so
+    #    there is never more than one row. A synthetic id would add a join with
+    #    no benefit.
+    # Q: Why store segments/snapshots as JSON strings, not native JSONB?
+    # A: SQLite (used in local tests) has no JSONB; str keeps the model portable
+    #    across SQLite and Postgres. The repository serializes/deserializes at
+    #    the boundary — mirroring ProcessTable.pre_diagnosis / FindingTable.answers.
+    # Decision: process_id PK/FK; JSON-as-str columns; timestamps as ISO 8601 str.
+    """
+
+    __tablename__ = "plan_jobs"
+
+    process_id: uuid.UUID = Field(primary_key=True, foreign_key="processes.id")
+    consultant_id: uuid.UUID = Field(index=True)  # owner snapshot — ownership check
+    status: str = Field(max_length=20, default="queued", index=True)
+    error: str | None = Field(default=None, nullable=True)
+    segments: str = Field(default="{}")  # JSON string — per-bucket checkpoint
+    failed_attempts: int = Field(default=0)
+    findings_snapshot: str = Field(default="{}")  # JSON string
+    pre_diagnosis_snapshot: str = Field(default="{}")  # JSON string
+    source_updated_at: str = Field(default="")  # findings.updated_at at enqueue
+    completed_count: int = Field(default=0)  # cumulative successful generations
+    created_at: str
+    updated_at: str
+
+
 class ProcessRepository:
-    """Repository for Process, Finding, Plan, and Task tables.
+    """Repository for Process, Finding, Plan, Task, PlanJob, and audit tables.
 
     Co-located because they share a tight lifecycle and live in the same DB.
 
@@ -386,6 +419,180 @@ class ProcessRepository:
             )
             return audit
 
+    # ---- Plan job (async generation) --------------------------------------
+
+    async def create_plan_job(self, job: PlanJob) -> PlanJob:
+        """Enqueue a generation job, snapshotting findings + pre_diagnosis.
+
+        # Q: Why upsert-on-failed instead of plain insert?
+        # A: A process has at most one job row. On a re-trigger after a FAILED
+        #    (or COMPLETED) job, we reset that row to `queued` with a fresh
+        #    snapshot. But while `queued`/`running`, a duplicate enqueue must
+        #    NOT disturb the active job — it returns the existing row unchanged
+        #    (the idempotent 202-reuse contract).
+        # Q: Why preserve `completed_count` on replace?
+        # A: It is a cumulative cap counter (max 3 successful generations per
+        #    process), independent of any single job's lifecycle.
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+        async with AsyncSession(self._engine) as session:
+            existing = await session.get(PlanJobTable, job.process_id)
+            if existing is not None:
+                if existing.status in (
+                    PlanJobStatus.QUEUED.value,
+                    PlanJobStatus.RUNNING.value,
+                ):
+                    # Idempotent reuse — never disturb an active job.
+                    return self._plan_job_to_domain(existing)
+                existing.status = PlanJobStatus.QUEUED.value
+                existing.error = None
+                existing.segments = json.dumps(job.segments, ensure_ascii=False)
+                existing.failed_attempts = 0
+                existing.findings_snapshot = json.dumps(
+                    job.findings_snapshot, ensure_ascii=False
+                )
+                existing.pre_diagnosis_snapshot = json.dumps(
+                    job.pre_diagnosis_snapshot, ensure_ascii=False
+                )
+                existing.source_updated_at = job.source_updated_at
+                existing.consultant_id = job.consultant_id
+                existing.updated_at = now
+                # completed_count deliberately preserved.
+                row = existing
+            else:
+                row = PlanJobTable(
+                    process_id=job.process_id,
+                    consultant_id=job.consultant_id,
+                    status=PlanJobStatus.QUEUED.value,
+                    error=None,
+                    segments=json.dumps(job.segments, ensure_ascii=False),
+                    failed_attempts=0,
+                    findings_snapshot=json.dumps(
+                        job.findings_snapshot, ensure_ascii=False
+                    ),
+                    pre_diagnosis_snapshot=json.dumps(
+                        job.pre_diagnosis_snapshot, ensure_ascii=False
+                    ),
+                    source_updated_at=job.source_updated_at,
+                    completed_count=job.completed_count,
+                    created_at=now,
+                    updated_at=now,
+                )
+                session.add(row)
+            await session.commit()
+            await session.refresh(row)
+            return self._plan_job_to_domain(row)
+
+    async def get_plan_job(self, process_id: uuid.UUID) -> PlanJob | None:
+        async with AsyncSession(self._engine) as session:
+            row = await session.get(PlanJobTable, process_id)
+            return self._plan_job_to_domain(row) if row else None
+
+    async def claim_job(self, process_id: uuid.UUID, consultant_id: uuid.UUID) -> bool:
+        """Atomically flip `queued → running`, verifying ownership.
+
+        # Q: Why does the WHERE guard include `consultant_id == :consultant_id`?
+        # A: Two goals in one atomic UPDATE. (1) Ownership: the worker passes the
+        #    `consultant_id` from the SQS message; a forged/wrong-owner message
+        #    fails the clause → rowcount 0 → rejected without touching the job.
+        #    (2) Atomicity: `status='queued'` ensures only the first of several
+        #    duplicate messages matches — the loser's UPDATE matches nothing.
+        # Decision: single atomic UPDATE carrying the ownership check; the
+        # `status='queued'` guard (not a run_token) provides duplicate-safety.
+        """
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            result = await session.execute(
+                update(PlanJobTable)
+                .where(
+                    PlanJobTable.process_id == process_id,
+                    PlanJobTable.consultant_id == consultant_id,
+                    PlanJobTable.status == PlanJobStatus.QUEUED.value,
+                )
+                .values(
+                    status=PlanJobStatus.RUNNING.value,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+            await session.commit()
+            return result.rowcount == 1
+
+    async def update_job_segments(self, process_id: uuid.UUID, segments: dict) -> None:
+        """Persist the per-bucket checkpoint (resumable retry)."""
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            row = await session.get(PlanJobTable, process_id)
+            if row is None:
+                raise ValueError("Plan job not found")
+            row.segments = json.dumps(segments, ensure_ascii=False)
+            row.updated_at = datetime.now(timezone.utc).isoformat()
+            await session.commit()
+
+    async def complete_job(self, process_id: uuid.UUID) -> None:
+        """Mark `running → completed` and atomically bump `completed_count`.
+
+        # Q: Why `completed_count = completed_count + 1` in SQL (not in Python)?
+        # A: Read-modify-write in Python would race between concurrent workers.
+        #    The SQL expression increment is atomic at the DB level.
+        # Decision: In-place SQL increment, guarded by status=running.
+        """
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            await session.execute(
+                update(PlanJobTable)
+                .where(
+                    PlanJobTable.process_id == process_id,
+                    PlanJobTable.status == PlanJobStatus.RUNNING.value,
+                )
+                .values(
+                    status=PlanJobStatus.COMPLETED.value,
+                    completed_count=PlanJobTable.completed_count + 1,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+            await session.commit()
+
+    async def fail_job(self, process_id: uuid.UUID, error: str) -> None:
+        """Mark `running → failed`, store the error, bump `failed_attempts`."""
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            await session.execute(
+                update(PlanJobTable)
+                .where(
+                    PlanJobTable.process_id == process_id,
+                    PlanJobTable.status == PlanJobStatus.RUNNING.value,
+                )
+                .values(
+                    status=PlanJobStatus.FAILED.value,
+                    error=error,
+                    failed_attempts=PlanJobTable.failed_attempts + 1,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+            await session.commit()
+
+    async def get_completed_count(self, process_id: uuid.UUID) -> int:
+        """Cumulative successful-generation count for the cap (max 3)."""
+        async with AsyncSession(self._engine) as session:
+            row = await session.get(PlanJobTable, process_id)
+            return row.completed_count if row else 0
+
+    async def get_active_job(self, process_id: uuid.UUID) -> PlanJob | None:
+        """Return the job only while it is `queued`/`running`, else None.
+
+        Used by the enqueue endpoint for idempotent 202 reuse.
+        """
+        job = await self.get_plan_job(process_id)
+        if job is None:
+            return None
+        return job if job.status in (PlanJobStatus.QUEUED, PlanJobStatus.RUNNING) else None
+
     # ---- Mappers ----------------------------------------------------------
 
     @staticmethod
@@ -509,4 +716,47 @@ class ProcessRepository:
             status=AuditLogStatus(row.status),
             error=row.error,
             created_at=created_at,
+        )
+
+    @staticmethod
+    def _plan_job_to_domain(row: PlanJobTable) -> PlanJob:
+        """Map a PlanJobTable row back to the domain entity.
+
+        # Q: Why defensive JSON/date deserialization?
+        # A: segments/snapshots are JSON strings; a corrupt row must never
+        #    propagate raw strings into the entity. Date columns are ISO 8601
+        #    strings that may be empty on legacy rows. Mirror the defensive
+        #    parsing used by _finding_to_domain and _audit_log_to_domain.
+        """
+        from datetime import datetime, timezone
+
+        def _json_dict(raw: str | None) -> dict:
+            if not raw:
+                return {}
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                return {}
+
+        def _ts(raw: str | None) -> datetime:
+            if raw:
+                try:
+                    return datetime.fromisoformat(raw)
+                except (ValueError, TypeError):
+                    pass
+            return datetime.now(timezone.utc)
+
+        return PlanJob(
+            process_id=row.process_id,
+            consultant_id=row.consultant_id,
+            status=PlanJobStatus(row.status),
+            error=row.error,
+            segments=_json_dict(row.segments),
+            failed_attempts=row.failed_attempts,
+            findings_snapshot=_json_dict(row.findings_snapshot),
+            pre_diagnosis_snapshot=_json_dict(row.pre_diagnosis_snapshot),
+            source_updated_at=row.source_updated_at,
+            completed_count=row.completed_count,
+            created_at=_ts(row.created_at),
+            updated_at=_ts(row.updated_at),
         )
