@@ -7,7 +7,14 @@ from fastapi import Depends
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.plan import Plan, Task, TaskPriority
-from src.adapters.llm.llm_port import LLMPort
+from src.adapters.llm.llm_port import LLMPort, SegmentResult
+from src.errors import (
+    LLMConnectionError,
+    LLMServiceError,
+    LLMTimeoutError,
+    RateLimitError,
+    ToolNotEmittedError,
+)
 # Q: Where do the injection mitigations live now?
 # A: In the shared `src.services.sanitizer` module so both this adapter and the
 #    new prompt builder reuse them (avoids drift between two filter copies).
@@ -102,28 +109,116 @@ class AnthropicAdapter:
                 return block.input
         raise ValueError("LLM did not call emit_action_plan tool")
 
-    def _build_plan(self, tool_input: dict[str, Any]) -> Plan:
-        plan_id = uuid.uuid4()
-        plan = Plan(
-            id=plan_id,
-            process_id=uuid.uuid4(),  # placeholder, caller will set
+    async def generate_segment(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        *,
+        max_tokens: int = 1500,
+        timeout_seconds: float = 30.0,
+    ) -> SegmentResult:
+        """Generate a single plan segment (bucket) via tool-use.
+
+        Returns the segment's summary + tasks plus usage/latency for the audit
+        log. Maps SDK transport errors to ``RetryableError`` subclasses and a
+        missing tool call to ``ToolNotEmittedError`` (retryable), so the worker's
+        tenacity → SQS-redelivery → DLQ ladder can distinguish transient from
+        permanent failure.
+        """
+        import time
+
+        import anthropic as anthropic_sdk
+
+        tool_schema = _load_tool_schema()
+        started = time.monotonic()
+
+        # Q: Why the specific exception order here?
+        # A: anthropic's exceptions nest: RateLimitError ⊂ APIStatusError ⊂ APIError,
+        #    and APITimeoutError/APIConnectionError ⊂ APIError (not APIStatusError).
+        #    Catching most-specific-first maps each transient cause to its own
+        #    RetryableError subclass, with APIError as the final catch-all.
+        try:
+            response = await self._client.messages.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                tools=[tool_schema],
+                tool_choice={"type": "tool", "name": "emit_action_plan"},
+                messages=[{"role": "user", "content": user_prompt}],
+                timeout=timeout_seconds,
+            )
+        except anthropic_sdk.RateLimitError as exc:
+            raise RateLimitError("LLM rate-limited during segment generation") from exc
+        except anthropic_sdk.APITimeoutError as exc:
+            raise LLMTimeoutError("LLM timed out during segment generation") from exc
+        except anthropic_sdk.APIConnectionError as exc:
+            raise LLMConnectionError("LLM connection error during segment generation") from exc
+        except anthropic_sdk.APIStatusError as exc:
+            raise LLMServiceError("LLM service error during segment generation") from exc
+        except anthropic_sdk.APIError as exc:
+            raise LLMServiceError("LLM API error during segment generation") from exc
+
+        latency_ms = int((time.monotonic() - started) * 1000)
+
+        try:
+            tool_input = self._extract_tool_input(response)
+        except ValueError as exc:
+            raise ToolNotEmittedError("LLM did not call emit_action_plan tool") from exc
+
+        usage = getattr(response, "usage", None)
+        input_tokens = getattr(usage, "input_tokens", 0) or 0
+        output_tokens = getattr(usage, "output_tokens", 0) or 0
+
+        return SegmentResult(
             summary_md=sanitize_markdown(tool_input.get("summary_md", "").strip()),
-            tasks=[],
+            tasks=self._tasks_from_input(tool_input),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            latency_ms=latency_ms,
         )
+
+    def _tasks_from_input(
+        self, tool_input: dict[str, Any], plan_id: uuid.UUID | None = None
+    ) -> list[Task]:
+        """Build the ``Task`` list from a raw tool-use input.
+
+        # Q: Why is `plan_id` a parameter instead of always generating a new one?
+        # A: ``_build_plan`` passes the plan's own id so the tasks reference it;
+        #    ``generate_segment`` leaves it defaulted (a placeholder id the worker
+        #    re-stamps during the merge). The id is never the source of truth —
+        #    it's overwritten when the plan is persisted.
+        """
+        pid = plan_id or uuid.uuid4()
+        tasks: list[Task] = []
         for index, raw_task in enumerate(tool_input.get("tasks", [])):
-            plan.tasks.append(
+            tasks.append(
                 Task(
                     id=uuid.uuid4(),
-                    plan_id=plan_id,
+                    plan_id=pid,
                     title=raw_task.get("title", "").strip()[:200],
-                    description=raw_task.get("description", "").strip(),
+                    description=sanitize_markdown(raw_task.get("description", "").strip()),
                     priority=_priority_value(raw_task.get("priority", "medium")),
                     estimated_effort=raw_task.get("estimated_effort", "").strip()[:100],
                     owner_role=raw_task.get("owner_role", "").strip()[:100],
                     sort_order=index,
+                    require_document=bool(raw_task.get("require_document", False)),
+                    document_title=(
+                        sanitize_markdown(raw_task["document_title"])[:200]
+                        if raw_task.get("document_title")
+                        else None
+                    ),
                 )
             )
-        return plan
+        return tasks
+
+    def _build_plan(self, tool_input: dict[str, Any]) -> Plan:
+        plan_id = uuid.uuid4()
+        return Plan(
+            id=plan_id,
+            process_id=uuid.uuid4(),  # placeholder, caller will set
+            summary_md=sanitize_markdown(tool_input.get("summary_md", "").strip()),
+            tasks=self._tasks_from_input(tool_input, plan_id=plan_id),
+        )
 
 
 def get_anthropic_adapter(settings: Settings = Depends(get_settings)) -> LLMPort:

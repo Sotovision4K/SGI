@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     ses_sender_email: str = ""
     email_enabled: bool = False
 
+    # Plan-generation queue (SQS). Empty until Phase 5 Terraform provisions it;
+    # enqueue raises QueueEnqueueError -> 503 while unset.
+    plan_generation_queue_url: str = ""
+
 
 @lru_cache
 def get_settings() -> Settings:

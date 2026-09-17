@@ -22,7 +22,7 @@ class Task(BaseModel):
     sort_order: int = 0
     source_clause: str = ""          # ISO clause, server-filled from the producing bucket
     require_document: bool = False   # whether this task needs a supporting document
-    document_title: str | None = None  # title of the required document (nullable)
+    document_title: str | None = Field(default=None, max_length=200)  # title of the required document (nullable)
 
     model_config = ConfigDict(from_attributes=True)
 

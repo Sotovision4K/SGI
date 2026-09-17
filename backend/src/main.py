@@ -3,12 +3,14 @@ import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from sqlmodel import SQLModel, text
 
 from src.config.settings import get_settings
+from src.errors import GenerationLimitError, MissingFindingsError, QueueEnqueueError
 from src.routes.user.routes import router as users_router
 from src.routes.processes.routes import router as processes_router
 from src.routes.companies.routes import router as companies_router
@@ -116,3 +118,27 @@ app.include_router(questionnaires_router)
 @app.get("/health", tags=["health"])
 async def health_check():
     return {"status": "healthy", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# ---- Plan-generation error → HTTP mapping (spec §2) -------------------------
+
+
+@app.exception_handler(MissingFindingsError)
+async def _missing_findings_handler(request: Request, exc: MissingFindingsError):
+    return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+
+@app.exception_handler(GenerationLimitError)
+async def _generation_limit_handler(request: Request, exc: GenerationLimitError):
+    return JSONResponse(status_code=429, content={"detail": str(exc)})
+
+
+@app.exception_handler(QueueEnqueueError)
+async def _queue_enqueue_handler(request: Request, exc: QueueEnqueueError):
+    # Technical detail (missing env var, SDK error) stays in logs only; the
+    # client gets a generic Spanish message consistent with the rest of the API.
+    logger.error("Plan generation enqueue failed: %s", exc)
+    return JSONResponse(
+        status_code=503,
+        content={"detail": "Servicio de generación no disponible. Intente más tarde."},
+    )

@@ -3,7 +3,7 @@ import logging
 import uuid
 
 from sqlmodel import SQLModel, Field, select
-from sqlalchemy import update
+from sqlalchemy import update, or_, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
@@ -11,9 +11,16 @@ from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.domain.entities.audit_log import AuditLogLLM
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
+from src.errors import JobErrorCode
 from src.adapters.db.user_repository import CompanyTable, get_engine
 
 logger = logging.getLogger(__name__)
+
+# Stale-lease recovery (spec §7 / decision 19): a `running` job whose lease has
+# expired (no heartbeat for this long) is reclaimable on SQS redelivery. The
+# value is aligned with the queue's visibility timeout so that a message can
+# only be redelivered after a crashed attempt has already gone stale.
+LEASE_TTL_SECONDS = 180
 
 
 class ProcessTable(SQLModel, table=True):
@@ -276,7 +283,6 @@ class ProcessRepository:
             return self._finding_to_domain(row)
 
     async def get_finding(self, process_id: uuid.UUID) -> Finding | None:
-        import json
         async with AsyncSession(self._engine) as session:
             row = (
                 await session.execute(
@@ -285,16 +291,7 @@ class ProcessRepository:
             ).scalar_one_or_none()
             if row is None:
                 return None
-            try:
-                answers = json.loads(row.answers) if row.answers else {}
-            except json.JSONDecodeError:
-                answers = {}
-            return Finding(
-                id=row.id,
-                process_id=row.process_id,
-                answers=answers,
-                free_text=row.free_text,
-            )
+            return self._finding_to_domain(row)
 
     # ---- Plan + Tasks -----------------------------------------------------
 
@@ -415,7 +412,7 @@ class ProcessRepository:
                 "Failed to insert LLM audit log for process %s attempt %s: %s",
                 audit.process_id,
                 audit.attempt,
-                exc,
+                type(exc).__name__,
             )
             return audit
 
@@ -424,65 +421,74 @@ class ProcessRepository:
     async def create_plan_job(self, job: PlanJob) -> PlanJob:
         """Enqueue a generation job, snapshotting findings + pre_diagnosis.
 
-        # Q: Why upsert-on-failed instead of plain insert?
-        # A: A process has at most one job row. On a re-trigger after a FAILED
-        #    (or COMPLETED) job, we reset that row to `queued` with a fresh
-        #    snapshot. But while `queued`/`running`, a duplicate enqueue must
-        #    NOT disturb the active job — it returns the existing row unchanged
-        #    (the idempotent 202-reuse contract).
-        # Q: Why preserve `completed_count` on replace?
-        # A: It is a cumulative cap counter (max 3 successful generations per
-        #    process), independent of any single job's lifecycle.
+        # Q: Why a single atomic upsert instead of read-then-write?
+        # A: The previous read-modify-write had a TOCTOU window: two concurrent
+        #    enqueues could both observe "no job" (or "failed") and race,
+        #    risking a lost update or a PK violation. `INSERT ... ON CONFLICT`
+        #    makes the terminal→queued reset and the fresh insert atomic.
+        # Q: Why does DO UPDATE carry a WHERE status IN ('failed','completed')?
+        # A: A process has at most one job row. On re-trigger after a terminal
+        #    job we reset it to `queued` with a fresh snapshot. But while
+        #    `queued`/`running`, a duplicate enqueue must NOT disturb the active
+        #    job — the WHERE guard makes the update a no-op (idempotent 202
+        #    reuse). `completed_count` is deliberately NOT in `set_` so the
+        #    cumulative cap counter survives any reset.
+        # Q: Why dialect-aware (pg_insert / sqlite_insert)?
+        # A: Production is Postgres, tests run on in-memory SQLite. Neither
+        #    dialect's `insert().on_conflict_do_update()` is portable, so we
+        #    pick the right builder from the engine's dialect name.
         """
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc).isoformat()
+
+        values = {
+            "process_id": job.process_id,
+            "consultant_id": job.consultant_id,
+            "status": PlanJobStatus.QUEUED.value,
+            "error": None,
+            "segments": json.dumps(job.segments, ensure_ascii=False),
+            "failed_attempts": 0,
+            "findings_snapshot": json.dumps(job.findings_snapshot, ensure_ascii=False),
+            "pre_diagnosis_snapshot": json.dumps(
+                job.pre_diagnosis_snapshot, ensure_ascii=False
+            ),
+            "source_updated_at": job.source_updated_at,
+            "completed_count": job.completed_count,
+            "created_at": now,
+            "updated_at": now,
+        }
+
+        if self._engine.dialect.name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as dialect_insert
+        else:
+            from sqlalchemy.dialects.sqlite import insert as dialect_insert
+
+        insert_stmt = dialect_insert(PlanJobTable).values(**values)
+        excluded = insert_stmt.excluded
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=[PlanJobTable.process_id],
+            set_={
+                "consultant_id": excluded.consultant_id,
+                "status": PlanJobStatus.QUEUED.value,
+                "error": None,
+                "segments": excluded.segments,
+                "failed_attempts": 0,
+                "findings_snapshot": excluded.findings_snapshot,
+                "pre_diagnosis_snapshot": excluded.pre_diagnosis_snapshot,
+                "source_updated_at": excluded.source_updated_at,
+                "updated_at": excluded.updated_at,
+                # completed_count intentionally omitted — preserve the cap.
+            },
+            where=PlanJobTable.status.in_(
+                [PlanJobStatus.FAILED.value, PlanJobStatus.COMPLETED.value]
+            ),
+        )
+
         async with AsyncSession(self._engine) as session:
-            existing = await session.get(PlanJobTable, job.process_id)
-            if existing is not None:
-                if existing.status in (
-                    PlanJobStatus.QUEUED.value,
-                    PlanJobStatus.RUNNING.value,
-                ):
-                    # Idempotent reuse — never disturb an active job.
-                    return self._plan_job_to_domain(existing)
-                existing.status = PlanJobStatus.QUEUED.value
-                existing.error = None
-                existing.segments = json.dumps(job.segments, ensure_ascii=False)
-                existing.failed_attempts = 0
-                existing.findings_snapshot = json.dumps(
-                    job.findings_snapshot, ensure_ascii=False
-                )
-                existing.pre_diagnosis_snapshot = json.dumps(
-                    job.pre_diagnosis_snapshot, ensure_ascii=False
-                )
-                existing.source_updated_at = job.source_updated_at
-                existing.consultant_id = job.consultant_id
-                existing.updated_at = now
-                # completed_count deliberately preserved.
-                row = existing
-            else:
-                row = PlanJobTable(
-                    process_id=job.process_id,
-                    consultant_id=job.consultant_id,
-                    status=PlanJobStatus.QUEUED.value,
-                    error=None,
-                    segments=json.dumps(job.segments, ensure_ascii=False),
-                    failed_attempts=0,
-                    findings_snapshot=json.dumps(
-                        job.findings_snapshot, ensure_ascii=False
-                    ),
-                    pre_diagnosis_snapshot=json.dumps(
-                        job.pre_diagnosis_snapshot, ensure_ascii=False
-                    ),
-                    source_updated_at=job.source_updated_at,
-                    completed_count=job.completed_count,
-                    created_at=now,
-                    updated_at=now,
-                )
-                session.add(row)
+            await session.execute(stmt)
             await session.commit()
-            await session.refresh(row)
+            row = await session.get(PlanJobTable, job.process_id)
             return self._plan_job_to_domain(row)
 
     async def get_plan_job(self, process_id: uuid.UUID) -> PlanJob | None:
@@ -491,18 +497,30 @@ class ProcessRepository:
             return self._plan_job_to_domain(row) if row else None
 
     async def claim_job(self, process_id: uuid.UUID, consultant_id: uuid.UUID) -> bool:
-        """Atomically flip `queued → running`, verifying ownership.
+        """Atomically acquire the lease (`queued|stale-running → running`), verifying ownership.
 
         # Q: Why does the WHERE guard include `consultant_id == :consultant_id`?
         # A: Two goals in one atomic UPDATE. (1) Ownership: the worker passes the
         #    `consultant_id` from the SQS message; a forged/wrong-owner message
         #    fails the clause → rowcount 0 → rejected without touching the job.
-        #    (2) Atomicity: `status='queued'` ensures only the first of several
-        #    duplicate messages matches — the loser's UPDATE matches nothing.
-        # Decision: single atomic UPDATE carrying the ownership check; the
-        # `status='queued'` guard (not a run_token) provides duplicate-safety.
+        #    (2) Atomicity: only one concurrent claim wins; the loser's UPDATE
+        #    matches nothing.
+        # Q: Why also match a *stale* `running` job, not just `queued`?
+        # A: Stale-lease recovery (decision 19). A crashed worker leaves the job
+        #    at `running` forever — `claim_job` was previously a no-op on
+        #    redelivery, silently dropping the message and wedging the process.
+        #    A `running` job whose `updated_at` heartbeat is older than
+        #    LEASE_TTL_SECONDS is reclaimable, so a redelivered message resumes it.
+        # Decision: single atomic UPDATE carrying the ownership check + the
+        # lease check. `updated_at` doubles as the heartbeat (every segment
+        # checkpoint bumps it), so a healthy run stays non-stale while alive.
         """
-        from datetime import datetime, timezone
+        from datetime import datetime, timedelta, timezone
+
+        now = datetime.now(timezone.utc)
+        # ISO 8601 UTC strings sort lexicographically == chronologically, so a
+        # plain string comparison in SQL is a correct "older than" test.
+        stale_before = (now - timedelta(seconds=LEASE_TTL_SECONDS)).isoformat()
 
         async with AsyncSession(self._engine) as session:
             result = await session.execute(
@@ -510,15 +528,61 @@ class ProcessRepository:
                 .where(
                     PlanJobTable.process_id == process_id,
                     PlanJobTable.consultant_id == consultant_id,
-                    PlanJobTable.status == PlanJobStatus.QUEUED.value,
+                    or_(
+                        PlanJobTable.status == PlanJobStatus.QUEUED.value,
+                        and_(
+                            PlanJobTable.status == PlanJobStatus.RUNNING.value,
+                            PlanJobTable.updated_at < stale_before,
+                        ),
+                    ),
                 )
                 .values(
                     status=PlanJobStatus.RUNNING.value,
-                    updated_at=datetime.now(timezone.utc).isoformat(),
+                    updated_at=now.isoformat(),
                 )
             )
             await session.commit()
             return result.rowcount == 1
+
+    async def requeue_job(self, process_id: uuid.UUID) -> None:
+        """Release a `running` job back to `queued` (deliberate retry).
+
+        # Q: Why a separate method instead of letting the lease expire?
+        # A: When the worker exhausts in-process retries for a segment and wants
+        #    the whole message redelivered, its last checkpoint write is seconds
+        #    old — well inside LEASE_TTL_SECONDS. Waiting for natural lease
+        #    expiry would defer the retry by ~3 min AND risk a race at the
+        #    threshold. Explicitly re-queueing makes the redelivered message
+        #    claim through the normal `queued` path immediately.
+        # Q: Why bump `failed_attempts` here?
+        # A: Each requeue is one whole-job retry. The worker reads
+        #    `failed_attempts` to enforce the redelivery cap (Phase 4, no
+        #    Terraform `maximumRetryAttempts` yet) and goes terminal past it.
+        # Decision: `running → queued` + `failed_attempts + 1` so SQS redelivery
+        # re-claims and re-runs only the `pending`/`failed` segments.
+        """
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            await session.execute(
+                update(PlanJobTable)
+                .where(
+                    PlanJobTable.process_id == process_id,
+                    PlanJobTable.status == PlanJobStatus.RUNNING.value,
+                )
+                .values(
+                    status=PlanJobStatus.QUEUED.value,
+                    failed_attempts=PlanJobTable.failed_attempts + 1,
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
+            await session.commit()
+
+    async def get_company_name(self, company_id: uuid.UUID) -> str:
+        """Return the company's display name ("" if missing) for prompt building."""
+        async with AsyncSession(self._engine) as session:
+            row = await session.get(CompanyTable, company_id)
+            return (row.name or "") if row else ""
 
     async def update_job_segments(self, process_id: uuid.UUID, segments: dict) -> None:
         """Persist the per-bucket checkpoint (resumable retry)."""
@@ -557,8 +621,17 @@ class ProcessRepository:
             )
             await session.commit()
 
-    async def fail_job(self, process_id: uuid.UUID, error: str) -> None:
-        """Mark `running → failed`, store the error, bump `failed_attempts`."""
+    async def fail_job(self, process_id: uuid.UUID, error: JobErrorCode) -> None:
+        """Mark `queued|running → failed`, store the error code, bump `failed_attempts`.
+
+        # Q: Why accept BOTH `queued` and `running` (not just `running`)?
+        # A: The enqueue route calls `fail_job` when the SQS send fails — at that
+        #    point the job is still `queued` (the worker never received a
+        #    message, so nothing flipped it to `running`). Restricting the
+        #    guard to `running` would make that rollback a silent no-op and
+        #    wedge the process in `queued` forever (idempotent-202 reuse would
+        #    block every retry). A `completed` job is deliberately NOT matched.
+        """
         from datetime import datetime, timezone
 
         async with AsyncSession(self._engine) as session:
@@ -566,11 +639,13 @@ class ProcessRepository:
                 update(PlanJobTable)
                 .where(
                     PlanJobTable.process_id == process_id,
-                    PlanJobTable.status == PlanJobStatus.RUNNING.value,
+                    PlanJobTable.status.in_(
+                        [PlanJobStatus.QUEUED.value, PlanJobStatus.RUNNING.value]
+                    ),
                 )
                 .values(
                     status=PlanJobStatus.FAILED.value,
-                    error=error,
+                    error=error.value,
                     failed_attempts=PlanJobTable.failed_attempts + 1,
                     updated_at=datetime.now(timezone.utc).isoformat(),
                 )

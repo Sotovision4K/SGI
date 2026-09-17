@@ -41,6 +41,7 @@ Endpoint + background worker that turns a completed diagnosis into a certified a
 - **Ownership — `consultant_id` binding**: `plan_jobs` snapshots `consultant_id` at enqueue. The worker re-verifies ownership on **every** call: it compares the SQS message's `consultant_id` against the job's snapshot and rejects any mismatch. The authorization decision is made once in the authenticated enqueue route, then sealed into the message — SQS has no user identity, so the worker must not "trust the job origin" blindly.
 - **Duplicate-safety — claim guard**: the worker atomically flips `queued → running` (`UPDATE … WHERE status='queued' AND consultant_id = :consultant_id`). Only the first winner proceeds; duplicate/redelivered SQS messages give up without re-cooking or repeat token spend. The frontend loader additionally blocks double-clicks.
 - **Generation limit**: **hard cap of 3 per process** (no per-user/monthly cap). **Only `completed` jobs count** — failed/running/queued don't burn an attempt. Enforced at enqueue → `429`.
+- **Per-segment status & recovery**: `plan_jobs.segments` tracks each bucket (B1/B2/B3) independently (`pending/running/completed/failed`). A failed segment is retried on its own; completed segments are never re-generated and render to the user immediately (partial results). **Option A** — JSONB on `plan_jobs`, no child table.
 - **Segmentation map (JSON)**: `questionnaire_map.json` drives both the bucket split (question → group → bucket) and the Spanish prompt labels via `.format()`. The DB stores answers in **English** as entered; the prompt-building layer maps each answer to Spanish. Single source of truth for bucketing + localisation.
 - **Editable plan**: the user can edit tasks afterward. `PUT /processes/{id}/plan/tasks/{task_id}` updates a single task (ownership + task-belonging checked) and bumps the plan's `updated_at` + a revision marker so generated vs hand-edited plans are distinguishable.
 - **Notification on completion**: in-app only (via `status` polling → banner/toast). Slack push is **deferred** (Technical Debt).
@@ -60,9 +61,10 @@ worker run_plan_generation(process_id, consultant_id):
    split answers → 3 buckets (questionnaire_map.json: group→bucket; shared across standards)
    shared context → all 3 buckets; labeled Q&A (Spanish via .format on map) + scope boundary → each bucket
    asyncio.gather(3) + Semaphore(3) + tenacity retry + per-call timeout + max_tokens≈1500
-   checkpoint each bucket into plan_jobs.segments; in-memory second-pass retry of failed bucket
-   all done → merge summaries + dedupe tasks (title) + re-stamp sort_order → single replace_plan → PLAN_READY, completed_count+1
-   past retry cap → job failed + error (DLQ message + CloudWatch alarm)
+   per-segment status → plan_jobs.segments (pending → running → completed|failed) as each bucket resolves
+   failed segment retried independently (tenacity in-process → SQS redelivery with checkpoint resume); completed segments never re-cooked
+   all segments done → merge summaries + dedupe tasks (title) + re-stamp sort_order → single replace_plan → completed, completed_count+1
+   segment past retry cap → that segment terminal (marked failed + alarm/DLQ); completed segments already shown to user
    + structured log + audit_logs_llm row per call (usage/latency/status)
 frontend polls GET /plan-generation/status  until completed → GET /plan (loader blocks edits while running)
 PUT /processes/{id}/plan/tasks/{task_id}  → edit one task; bump updated_at + revision marker
@@ -99,13 +101,15 @@ Each call receives: **shared** (company name, ISO, full pre-diagnosis, full free
 
 **Merge** (in code): `summary_md` = segment summaries joined with markdown headers; `tasks` = concatenated, deduplicated by normalized title, re-stamped `sort_order`.
 
+**Context is self-contained** — each bucket prompt already carries the full shared context (company, ISO, pre-diagnosis, full answers) plus its own bucket-local Q&A. Nothing depends on another bucket's output, so splitting into more/smaller buckets does **not** lose LLM context (confirmed 2026-09-17). Segment count is therefore a latency lever, not a coherence lever; the merge step is in code and never re-reads prior LLM output.
+
 ---
 
 ## 6. Data model (new tables)
 
 Both auto-created by `create_all` on cold start — no migration needed.
 
-**`plan_jobs`**: `process_id` (PK, FK→processes), **`consultant_id`** (indexed; owner snapshot — ownership re-verified on every worker call), `status` (queued/running/completed/failed), `error`, `segments` (JSONB per-bucket status/tasks/summary/error), `failed_attempts`, **`findings_snapshot`** (JSONB, snapshot at enqueue), **`pre_diagnosis_snapshot`** (JSONB), **`source_updated_at`** (findings timestamp at enqueue), **`completed_count`** (counts successful generations for the cap), `created_at`, `updated_at`.
+**`plan_jobs`**: `process_id` (PK, FK→processes), **`consultant_id`** (indexed; owner snapshot — ownership re-verified on every worker call), `status` (queued/running/completed/failed), `error`, `segments` (JSONB per-bucket: `status` `pending/running/completed/failed` + `tasks`/`summary`/`error` — **Option A, per-segment status lives here**), `failed_attempts`, **`findings_snapshot`** (JSONB, snapshot at enqueue), **`pre_diagnosis_snapshot`** (JSONB), **`source_updated_at`** (findings timestamp at enqueue), **`completed_count`** (counts successful generations for the cap), `created_at`, `updated_at`.
 
 **`audit_logs_llm`**: `id` PK, `process_id` FK, `job_id`, `bucket`, `attempt`, `model`, `iso_standard`, `request_payload` (JSONB sanitized), `response_json` (JSONB sanitized), `input_tokens`, `output_tokens`, `latency_ms`, `status`, `error`, `created_at`.
 
@@ -131,13 +135,15 @@ The domain entity (`Task`, `Plan`, `Finding`) is the business model — what the
 
 ## 7. Retry & failure handling
 
-Ladder:
+Ladder (per segment, not per job):
 
-1. **tenacity** (exp backoff + jitter + per-call timeout) — transient LLM errors.
-2. **SQS visibility timeout** (~300s) + event source mapping `maximum_retry_attempts`.
-3. **Queue redrive → DLQ** — terminal; message preserved for inspection/replay.
+1. **tenacity** (exp backoff + jitter + per-call timeout) — transient LLM errors, in-process.
+2. **SQS visibility timeout** + event source mapping `maximum_retry_attempts` — whole-message redelivery, but the checkpoint resumes **only failed segments** (completed segments skipped, no re-cook).
+3. **Failed segment → DLQ/alarm** — terminal; completed segments remain available; failed segment flagged for on-call/manual review.
 
-Semantics: `RetryableError` (rate-limit, service, timeout, connection, tool-not-emitted) → retry, then DLQ. `TerminalError` (format, rejected, findings missing) → fail job immediately, no retry. Recovery: DLQ CloudWatch alarm → SNS; user "Retry" resumes only the failed buckets via the checkpoint.
+Semantics: `RetryableError` (rate-limit, service, timeout, connection, tool-not-emitted) → retry that segment, then terminal. `TerminalError` (format, rejected, findings missing) → fail that segment immediately, no retry. While a segment retries, the user sees "reintentando…" (in-app, Spanish); completed segments render immediately.
+
+Visibility timeout: **180s** — comfortably ≥ a single 1500-token call (~25–50s) + a bounded retry or two; a crashed segment recovers in ~3 min.
 
 ---
 
@@ -189,7 +195,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 1. `errors.py` — `PlanGenerationError`, `RetryableError` (+LLM subclasses), `TerminalError`, `SegmentGenerationError`, `QueueEnqueueError`, `AuditLogWriteError`, `GenerationLimitError`.
 2. `questionnaire_map.json` — buckets + per-question `{es_label, clause, group, bucket}`; drives split (#1) and Spanish labels (#8); EN answer mapping stays English in DB.
 3. `process_repository.py` — `PlanJobTable` (+ snapshots, `consultant_id`, `completed_count`), `AuditLogLlmTable`, job CRUD, `insert_audit_log_llm`, task-patch repo method.
-4. `plan_generation.py` — snapshot-based split, claim guard, resumable worker, `asyncio.gather`+Semaphore+tenacity+second-pass, in-code merge (title dedupe + summary join), atomic `replace_plan`, `completed_count+1`, logs + audit.
+4. `plan_generation.py` — snapshot-based split, claim guard, resumable worker, `asyncio.gather`+Semaphore+tenacity, per-segment status checkpoint, in-code merge (title dedupe + summary join), atomic `replace_plan`, `completed_count+1`, logs + audit.
 5. `llm_port.py` + `anthropic_adapter.py` — segment generation (`max_tokens≈1500`, timeout), labelled Q&A via map `.format()`, typed errors, return usage/latency/correlation.
 6. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`.
 7. `main.py` — new-path exception handlers (503/400/429/409).
@@ -207,7 +213,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 1. **Async SQS + Lambda** (same function, handler branch); `POST` enqueues one message per process, returns idempotent `202` (reuses existing job while queued/running).
 2. **3 buckets** (Liderazgo / Contexto+Apoyo / Operación+Mejora), group→bucket map in `questionnaire_map.json`; shared context + labelled Q&A + scope boundary; **merge in code** (no 4th LLM call).
 3. **Resumable checkpoint** (`plan_jobs.segments`): retries and "Reintentar" re-run only the failed buckets.
-4. **Fail-closed UX**: partial plan never persisted; plan tables written only on full success (previous plan preserved).
+4. **Segment-level recovery (partial results)**: each segment persists independently — completed segments render immediately; a failed segment is retried on its own (succeeded segments never re-generated). Supersedes the earlier "fail-closed" stance.
 5. **Retry ladder + DLQ + CloudWatch alarm → SNS**; terminal after limit → job `failed` + operator review.
 6. **Observability**: structured logs + `audit_logs_llm` (sanitized payload + tokens + latency); audit failures never break generation.
 7. **Error taxonomy**: `RetryableError` vs `TerminalError` root; tool-not-emitted = retryable.
@@ -219,6 +225,12 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 13. **Ownership — `consultant_id` binding**: the SQS message carries `consultant_id`; the worker rejects any message whose value doesn't match the job's snapshot. No `run_token` — `status='queued'` alone is sufficient for atomicity.
 14. **Generation limit**: **hard cap of 3 per process** (no per-user/monthly cap); **only `completed` jobs count**; enforced at enqueue → `429`.
 15. **Single segmentation/localisation config (`questionnaire_map.json`)**: drives bucket split and Spanish prompt labels via `.format()`; **DB stores English**.
+16. **Per-segment status — Option A**: `plan_jobs.segments` JSONB carries per-bucket `status` (`pending/running/completed/failed`) + `tasks`/`summary`/`error`. No `plan_segments` child table, no extra column — the existing `segments` blob is the single source of truth for resumability.
+17. **Segments are context-self-contained**: each bucket prompt carries the full shared context (company, ISO, pre-diagnosis, full answers) — splitting into more/smaller buckets does **not** lose LLM context. Segment count is a latency lever, not a coherence one.
+18. **Partial plan is valid**: if a segment permanently fails (DLQ), the plan is still persisted and served — completed segments' tasks are written to `plans`/`tasks`, and the failed segment is recorded in `segments` (status `failed` + error) so the frontend can surface the missing section. The plan remains editable. `completed_count` still increments (a partial plan consumed an attempt).
+19. **Stale-lease recovery (heartbeat/lease)**: `claim_job` matches `queued` OR (`running` AND `updated_at` < `now − lease_ttl`), with `lease_ttl = 180s` (aligned with the visibility timeout). Every `update_job_segments` write bumps `updated_at` → heartbeat keeps the lease alive during a healthy run. **Crash** → heartbeat stops → lease expires → SQS redelivery reclaims. **Deliberate retry** (a segment fails after tenacity) → worker calls `requeue_job` (`running → queued`) before raising → redelivery re-claims and re-runs only failed segments. Resolves audit M2.
+20. **`certification_goal` from pre-diagnosis**: the goal is user input already captured in `pre_diagnosis` (group "Objetivos de certificación" + `pd_objectives` chips) and present in `pre_diagnosis_snapshot`. A small helper composes a concise Spanish goal string (`pd_target_date`/`pd_motivation`/`pd_cert_type`/`pd_scope`/`pd_objectives`) passed to `build_system_prompt(certification_goal=…)`. Previously it defaulted to `""` (never wired — the "Objetivo de certificación" section rendered blank).
+21. **Testing strategy — local process-e2e first, push last**: build a local, AWS-free **process e2e** test (`POST /generate-plan` with a fake queue → `handle_sqs_event` with a synthetic SQS event → worker → fake LLM → SQLite → `GET /plan`) rather than pushing to `dev` immediately. The two Phase-4 code-review HIGH bugs (`document_title` `VARCHAR(200)`; failed-claim redelivery) are **invisible to the SQLite + fake-LLM suite** (SQLite doesn't enforce `VARCHAR` length; SQS redelivery timing can't run locally), so a naive push would exercise known-broken paths. Order: fix HIGH bugs → local process-e2e (fast, free, CI-able) → push + one manual smoke test on the real SQS/Supabase/Anthropic stack.
 
 ### Cost/trade-offs
 
@@ -227,7 +239,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 
 ### Concerns / risks
 
-1. **B3 slowest critical path** (per-standard size; ~12 q on iso9001) — mitigated by task cap + bounded retries; may exceed 15s worst case. Set Lambda timeout + SQS visibility to worst-case attempt+backoff.
+1. **B3 slowest critical path** (per-standard size; ~12 q on iso9001) — mitigated by task cap + bounded retries; may exceed 15s worst case. Set Lambda timeout + SQS visibility to worst-case attempt+backoff. **Visibility timeout = 180s** — comfortably ≥ a single 1500-token call (~25–50s) + a bounded retry or two; still recovers a crashed segment in ~3 min.
 2. **Cross-bucket coherence** — fan-out limits global priority; mitigated by shared context + scope boundary + dedupe.
 3. **Same-Lambda concurrency** — jobs could contend with interactive API; later reserved concurrency.
 4. **DLQ is terminal** (manual replay only via "Reintentar"); alarm ensures visibility.
@@ -240,6 +252,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 2. ~~DLQ redrive~~ — **RESOLVED**: **manual "Reintentar" only**; no auto redrive.
 3. ~~Completion notification~~ — **RESOLVED**: **in-app only** via polling; Slack push deferred to a future streaming agent (Technical Debt).
 4. ~~Extract fan-out + audit as reusable modules~~ — **DEFERRED**: do it on the **next** LLM feature.
+5. ~~**Partial-plan validity**~~ — **RESOLVED**: partial plan is **valid** — `replace_plan` writes the completed segments' tasks even if a segment permanently failed; the failed segment stays marked `failed` in `segments` and the frontend surfaces the missing section. No `partial`/`completed_with_errors` status; job `status` reflects the persisted plan.
 
 ### Technical debt (not in scope now)
 
@@ -253,15 +266,15 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 1. Create `backend/questionnaires/questionnaire_map.json` — buckets + per-question `{es_label, clause, group, bucket}` (per-standard); drives bucket split (#1) and Spanish labels (#8); DB stays English. ✅ **DONE** (pre-existing)
 2. Update `plan.py` + `plan_tool.json` — add `Task.source_clause`, `require_document` (bool), `document_title` (nullable); keep `updated_at`/`document_url`/`user_id`/`llm_client` out of the payload. ✅ **DONE** (Phase 1)
 3. `errors.py` — `PlanGenerationError`, `RetryableError` (+LLM subclasses), `TerminalError`, `SegmentGenerationError`, `QueueEnqueueError`, `AuditLogWriteError`, `GenerationLimitError`. ✅ **DONE** (Phase 1)
-4. `process_repository.py` — `PlanJobTable` (+ `findings_snapshot`, `pre_diagnosis_snapshot`, `source_updated_at`, `consultant_id`, `completed_count`), `AuditLogLlmTable`, job CRUD, `insert_audit_log_llm`, task-patch repo method. ✅ **DONE** (Phase 2 — job CRUD + ownership-verified claim guard; task-patch repo method still pending for Phase 6)
-5. `plan_generation.py` — snapshot-based split, claim guard, resumable worker, `asyncio.gather`+Semaphore+tenacity+second-pass, in-code merge (title dedupe + summary join), atomic `replace_plan`, `completed_count+1`, logs + audit. ⬜ not started
-6. `llm_port.py` + `anthropic_adapter.py` — segment generation (`max_tokens≈1500`, timeout), labelled Q&A via map `.format()`, typed errors, return usage/latency/correlation. ⬜ not started (single-call only today)
-7. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`. ⬜ not started (synchronous `POST` + `GET /plan` only today)
-8. `main.py` — new-path exception handlers (503/400/429/409). ⬜ not started
-9. `handler.py` — `aws:sqs` branch → worker; atomic claim; partial-batch response. ⚠️ **PARTIAL** — `aws:sqs` branch + partial-batch response added (Phase 2); worker claim wiring done (Phase 2); real generation logic pending (Phase 4)
+4. `process_repository.py` — `PlanJobTable` (+ `findings_snapshot`, `pre_diagnosis_snapshot`, `source_updated_at`, `consultant_id`, `completed_count`), `AuditLogLlmTable`, job CRUD, `insert_audit_log_llm`, task-patch repo method. ✅ **DONE** (Phase 2: job CRUD + ownership-verified claim guard. Phase 3: `create_plan_job` → atomic dialect-aware upsert [M1], `fail_job` accepts `queued|running` [C1 fix], `get_finding` maps `updated_at`. Phase 4: `claim_job` lease reclaim [decision 19], `requeue_job` [bumps `failed_attempts`], `get_company_name`, `fail_job(error: JobErrorCode)`. Task-patch repo method still pending for Phase 6.)
+5. `plan_generation.py` — snapshot-based split, claim guard, resumable worker, `asyncio.gather`+Semaphore+tenacity, per-segment status checkpoint, in-code merge (title dedupe + summary join), atomic `replace_plan`, `completed_count+1`, logs + audit. ✅ **DONE** (Phase 4 — `src/services/plan_generation.py`: `generate` orchestration + `_process_segment` fan-out + `_merge`; worker delegates.)
+6. `llm_port.py` + `anthropic_adapter.py` — segment generation (`max_tokens≈1500`, timeout), labelled Q&A via map `.format()`, typed errors, return usage/latency/correlation. ✅ **DONE** (Phase 4 — `SegmentResult` dataclass + `generate_segment` with typed error mapping + usage/latency return; `_tasks_from_input` wires `require_document`/`document_title`.)
+7. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`. ✅ **DONE** (Phase 3 — async enqueue `202` + status endpoint + `GET /plan` new task fields; `PUT /plan/tasks/{task_id}` deferred to Phase 6)
+8. `main.py` — new-path exception handlers (503/400/429/409). ✅ **DONE** (Phase 3 — 503/400/429 registered; 409 deferred with Phase 6 edit-task conflict)
+9. `handler.py` — `aws:sqs` branch → worker; atomic claim; partial-batch response. ✅ **DONE** (Phase 2 `aws:sqs` branch + partial-batch response; Phase 4 worker delegates to `plan_generation.generate` — retryable → redelivery, terminal → delete.)
 10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ⬜ not started
 11. Frontend — generate loader (hard-stopper on edits during run + block double-click); poll status; in-app completion toast; edit-task view wired to `PUT`. ⬜ not started (synchronous generate only today)
-12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ⚠️ **PARTIAL** — Phase 0 regression tests + Phase 2 job-CRUD/claim/ownership tests added; async-pipeline + fan-out tests pending (Phase 8)
+12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 4** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`; 280 passing). Remaining: edit-task ownership (Phase 6), retry→DLQ e2e (Phase 5).
 
 ---
 
@@ -319,9 +332,115 @@ Context: the spec §0 assumed the synchronous `generate-plan`/`replace_plan` pat
 | L4 | Low | `batchItemFailures` correct, but needs `FunctionResponseTypes=["ReportBatchItemFailures"]` on the event-source mapping | Phase 5 Terraform checklist |
 | L5 | Low | No durable rate limiting on worker path (in-memory limiter ineffective on Lambda) | Enforce cap/rate-limit at enqueue (Phase 3) |
 
-### Verification gates (as of 2026-09-16)
+### Phase 3 — Async enqueue, status endpoint, error mapping (completed 2026-09-16)
 
-- `ruff check` (changed files): clean.
-- `pytest`: **252 passed** (was 239; +3 Phase 0 + 13 Phase 2 = +16).
+- **`backend/src/adapters/queue/`** (new): `QueuePort` protocol + `SQSAdapter` (sync boto3 via `asyncio.to_thread`). Factory fails fast on unconfigured `PLAN_GENERATION_QUEUE_URL` (before any DB write) so a missing queue can't wedge a job.
+- **`backend/src/errors.py`**: `JobErrorCode(str, Enum)` — fixed, sanitized codes persisted in `plan_jobs.error` (audit M3).
+- **`backend/src/config/settings.py`**: `plan_generation_queue_url`.
+- **`backend/src/adapters/db/process_repository.py`**: `create_plan_job` rewritten as an atomic dialect-aware upsert (`pg_insert`/`sqlite_insert` + `on_conflict_do_update … WHERE status IN ('failed','completed')`) — closes audit M1 (TOCTOU). `fail_job` now accepts `queued|running` (was `running`-only). `get_finding` maps `updated_at` via `_finding_to_domain`.
+- **`backend/src/routes/processes/routes.py`**: `POST /generate-plan` rewritten to async enqueue (`202 {job_id}`; findings→400, cap→429, active-job→202 reuse, snapshot→upsert→SQS send→send-failure `fail_job`+503); `GET /plan-generation/status` added; `GET /plan` + `TaskSchema` expose `source_clause`/`require_document`/`document_title` (closes code-review M2's route layer). `list_processes` missing-`sub` IDOR fixed (rejects missing `sub` like `create_process`).
+- **`backend/src/main.py`**: exception handlers `MissingFindingsError`→400, `GenerationLimitError`→429, `QueueEnqueueError`→503 (generic Spanish message; technical detail in logs).
+- **Tests**: `test_queue_adapter.py` (empty URL, send success + ownership payload, send failure, factory fail-fast); `test_routes.py` enqueue suite (202/400/429/503/idempotent-reuse + snapshot-content + SQS message payload), status endpoint (200/404), `GET /plan` new fields; `test_plan_job.py` upsert atomicity + fail-from-queued + completed-untouched. Tests migrated from `patch()` (ineffective for `Depends`) to `app.dependency_overrides`.
 
-Status: Phase 0 + Phase 1 + Phase 2 complete. Next: **Phase 3** — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan`, and the SQS client send. Carries M1/M2/M3 as blocking.
+### Phase 3 review findings (security-auditor + code-reviewer, 2026-09-16)
+
+Both reviewers converged on one **Critical** bug and a set of hardening items. All resolved:
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| C1 | Critical | `fail_job` no-op from `queued` — SQS send-failure rollback wedged the process forever (and empty queue URL made it the *default* state until Phase 5) | **Fixed** — factory fail-fast before DB write + `fail_job` accepts `queued\|running` + route guards `fail_job` itself |
+| H2 (sec) | High | `list_processes` leaked all processes on missing `sub` (latent IDOR, pre-existing) | **Fixed** — reject missing `sub` → 400 |
+| M1 (rev) | Med | Cap check is check-then-act (TOCTOU on `completed_count`) | **Mitigated** — re-check `created.completed_count` post-upsert |
+| M2 (rev) | Med | 503 detail English + leaked env-var name | **Fixed** — generic Spanish message |
+| M3 (rev) | Med | `fail_job` inside `except` unguarded (DB failure masked 503) | **Fixed** — wrapped |
+| L (sec) | Low | SQS adapter logged raw exception (queue URL/account id) | **Fixed** — logs `type(exc).__name__` |
+
+**Forward-looking (not blocking, for later phases):** DLQ/poison-message handling + worker lease recovery (audit M2, Phase 4/5), in-memory rate limiter on Lambda (audit L5), unbounded findings payload (Phase 4 sanitizer), `boto3` client-per-request (consistent with existing adapters), Postgres-dialect compile test for the upsert.
+
+> **⚠️ Phase 4/5 sequencing guard**: do **not** enable the SQS event-source mapping (Phase 5) before Phase 4's worker actually `complete_job`/`fail_job`s — the Phase 2 stub claims jobs to `running` and stops, so an enabled queue would wedge every claimed job at `running`.
+
+### Phase 4 draft — stale-lease + certification_goal (2026-09-17)
+
+Two decisions locked before Phase 4 implementation:
+
+- **Stale-lease = heartbeat/lease model (decision 19)** — `claim_job` reclaims stale `running` jobs via `updated_at` < `now − 180s`; `update_job_segments` acts as the heartbeat; a new `requeue_job` (`running → queued`) handles deliberate retries. Resolves audit M2.
+- **`certification_goal` from `pre_diagnosis` (decision 20)** — the goal is user input in the pre-diagnosis ("Objetivos de certificación" group), already in `pre_diagnosis_snapshot`; a small helper composes it. Previously never wired (blank).
+
+### Phase 4 design decision — segment-level recovery (2026-09-17)
+
+Adopted **segment-level recovery** over the earlier "fail-closed" whole-job model (supersedes decision 4):
+
+- **Per-segment status (Option A)**: `plan_jobs.segments` JSONB carries per-bucket `status` (`pending/running/completed/failed`) + result — no child table, no extra column.
+- **Partial results**: completed segments persist and render immediately; a failed segment retries on its own (tenacity → SQS redelivery with checkpoint resume) — succeeded segments are never re-generated.
+- **Failure UX**: while a segment retries, the user sees "reintentando…" (in-app, Spanish); past the retry cap the segment is terminal (alarm/DLQ) while completed segments stay available.
+- **Why**: (1) partial results are real value — the user isn't blocked on the slowest bucket; (2) no token spend re-cooking succeeded segments; (3) faster perceived completion.
+- **Context note**: each bucket prompt is self-contained (full shared context + bucket-local Q&A), so segment count is a latency lever, not a coherence one.
+
+**Resolved (same session)**: partial plan is **valid** — persist completed segments even if one permanently fails; failed segment marked in `segments`. Visibility timeout set to **180s**.
+
+### Phase 4 — real worker fan-out (completed 2026-09-17)
+
+The worker now does the full generation pipeline (spec §3), carrying audit M2 (stale-lease) + M3 (typed error enums):
+
+- **`backend/src/services/plan_generation.py`** (new): `generate()` orchestration (claim → snapshot read → metadata → split → `asyncio.gather`+`Semaphore`+tenacity → per-segment checkpoint → merge → `replace_plan` → `complete_job`). Retry ladder: tenacity in-process → `requeue_job` + `RetryableError` (SQS redelivery, `failed_attempts`-capped) → terminal (`fail_job`). `_merge` dedupes by normalized title + re-stamps `sort_order` + fills `source_clause` from the producing bucket. Partial plan persisted (decision 18).
+- **`backend/src/adapters/llm/llm_port.py` + `anthropic_adapter.py`**: `SegmentResult` dataclass + `generate_segment` (`max_tokens≈1500`, per-call timeout, SDK-error → `RetryableError` mapping, `ToolNotEmittedError` on missing tool, usage/latency return). `_tasks_from_input` now wires `require_document`/`document_title` (closes code-review M2's adapter layer).
+- **`backend/src/adapters/db/process_repository.py`**: `claim_job` lease reclaim (stale `running`), `requeue_job` (bumps `failed_attempts`), `get_company_name`, `fail_job(error: JobErrorCode)`.
+- **`backend/src/services/prompt_builder.py`**: `build_certification_goal` (from `pre_diagnosis`, decision 20); `free_text` added to shared context; pre-diagnosis + free-text sanitized (closes the prompt-injection gap on the segmented path).
+- **`backend/src/workers/plan_generation_worker.py`**: thin SQS entrypoint now delegates to `plan_generation.generate`.
+- **`pyproject.toml`**: `tenacity>=9.1.4` added.
+
+**Known follow-ups (not blocking)**: per-attempt audit granularity (currently one audit row per segment), `source_clause` is the bucket's clause list (not per-task — the LLM doesn't return a clause), `_MAX_REDELIVERIES=2` worker-side cap (Terraform `maximumRetryAttempts` still Phase 5).
+
+### Phase 4 security audit (security-auditor, 2026-09-17)
+
+**0 critical, 2 high, 3 medium, 5 low.** Confirmed safe: no SQL injection (all parameterized; the `updated_at < stale_before` lease comparison is a bound string compare, not interpolation), `.format()` never applied to user strings, and the `consultant_id` ownership binding is enforced atomically in `claim_job`.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| 1 | High | `free_text` length cap dropped on the segmented path (regression vs legacy `sanitize_findings`) → unbounded token/cost abuse | **Fixed** — truncate to `MAX_FREE_TEXT_LENGTH` in `build_shared_context` |
+| 2 | High | `update_job_segments` is a non-atomic whole-blob read-modify-write + process-local `asyncio.Lock` → lost-update/double-spend across concurrent Lambda instances once segment latency exceeds the 180s lease | **Deferred** — latent today (`_SEGMENT_TIMEOUT_SECONDS=30` × 3 attempts ≈ 93s < 180s TTL); revisit if timeouts/tokens are raised. Proper fix: conditional per-bucket `UPDATE`/JSONB merge or a distributed lease |
+| 3 | Med | `company_name` reached the system prompt unsanitized (docstring falsely claimed "sanitized upstream") | **Fixed** — `sanitize_single_answer` in `build_system_prompt` + `build_shared_context` |
+| 4 | Med | LLM task `description`/`document_title` unsanitized (vs `summary_md`) → stored-XSS chain if frontend renders as HTML | **Fixed** — `sanitize_markdown` in `_tasks_from_input` + `_dict_to_task` |
+| 5 | Med | Audit log persists the full prompt (shadow copy of user findings; no retention/delete path) | **Deferred** — needs a retention/TTL + deletion policy |
+| 6 | Low | `updated_at < stale_before` relies on consistent ISO-8601 UTC string format | **Note** — correct today (single writer format); migrate `updated_at` to `TIMESTAMPTZ` for robustness |
+| 7 | Low | `replace_plan` + `complete_job` are separate transactions (crash between → re-spend) | **Note** — wrap in one transaction later |
+| 8 | Low | SQS message unsigned (worker can't distinguish legit vs injected enqueue) | **Phase 5** — restrict `sqs:SendMessage` to the API Lambda role |
+| 9 | Low | `insert_audit_log_llm` logged raw exception (could leak conn string/host) | **Fixed** — log `type(exc).__name__` |
+| 10 | Low | `requeue_job`/`fail_job` lack the `consultant_id` guard `claim_job` has | **Deferred** — only reachable post-ownership-check today; add for symmetry |
+
+### Phase 4 code review (code-reviewer, 2026-09-17)
+
+**0 critical, 2 high, 6 medium, 8 low — verdict BLOCK.** Both HIGH bugs are invisible to the SQLite + fake-LLM test suite: SQLite does **not** enforce `VARCHAR(200)`, and SQS redelivery timing can't run locally — so a green local suite does not mean the code survives the real stack.
+
+| # | Sev | Finding | Disposition |
+|---|-----|---------|-------------|
+| H1 | High | Failed claim returns normally → SQS deletes the message while the job is still `running` → wedged forever (no reconciler, idempotent-202 blocks re-enqueue) | **Fixed** — `generate` raises `RetryableError` when the claim fails on a `queued`/`running` job (message redelivered, not deleted) |
+| H2 | High | `document_title` never clamped, but Postgres column is `VARCHAR(200)` → `PLAN_PERSIST_FAILED` **after** paying for all 3 LLM calls (regeneration re-runs the same model → deterministic failure) | **Fixed** — clamp `[:200]` in both task factories + `max_length=200` on the entity |
+| M1 | Med | Permanent 4xx LLM errors (`BadRequest`/`Authentication`/`Permission`/`NotFound` ⊂ `APIStatusError`) mapped to retryable `LLMServiceError` → up to 9 futile calls + ~10 min latency | Fix — map 4xx subclasses → `TerminalError`, keep 429/5xx retryable |
+| M2 | Med | Non-string answer values bypass the boundary caps → unbounded prompt bloat | Fix — type `dict[str, str]` + reject non-strings |
+| M3 | Med | `update_job_segments` is an unguarded read-modify-write of the whole `segments` blob → checkpoint clobbering + double `completed_count` under lease theft | Fix — `WHERE status='running'` guard + rowcount check |
+| M4 | Med | SQS batch processed sequentially vs the 120s Lambda timeout → a multi-record batch kills the invocation mid-run | Phase 5 — `batch_size = 1` |
+| M5 | Med | Legacy single-call `generate_plan` is dead production code (a second prompt/task system that already diverged — see H2) | Cleanup — remove + port tests to `generate_segment` |
+| M6 | Med | Zero test coverage for `handle_sqs_event` and the redelivery-cap terminal path | **Fixed** — `test_plan_generation_worker.py` (batch-failure mapping, success, malformed-record isolation) + `test_process_e2e.py` (full route→worker→plan pipeline) |
+| L1–L8 | Low | ISO-string comparison fragility, catch-all drops stack trace, audit `attempt=1`/latency conflation, whitespace-only titles, shallow-copy alias, no-op semaphore + 16-param fn, uncached `_load_tool_schema`, fixture/constructor brittleness | Track — fix opportunistically |
+
+**Confirmed correct**: tenacity on an async fn (verified 3 attempts + backoff + `reraise`), SDK exception MRO/order, `claim_job` atomicity, `failed_attempts` redelivery-cap coherence, checkpoint resume, merge mechanics (dedupe/sort/`source_clause`/empty), audit best-effort + `job_id == process_id` by construction, engine reuse, prompt `.format` safety model, route enqueue flow, handler SQS branch.
+
+### Testing strategy (2026-09-17)
+
+**Choice**: build a **local, AWS-free process-e2e test** before pushing to `dev`.
+
+**Why**: the two blocking HIGH bugs are exactly the class of defect the local unit/integration suite (SQLite + fake LLM) cannot catch — Postgres `VARCHAR` enforcement and SQS redelivery timing. Pushing now would smoke-test *known-broken* paths. The local process-e2e (`POST → worker → fake LLM → SQLite → GET /plan`) closes the route→worker→repo→LLM→merge→persist wiring gap at zero AWS cost and is CI-able; the real stack (SQS DLQ/visibility, Lambda timeouts, real model output, Postgres) is then exercised once as a final manual smoke test, after the known bugs are fixed.
+
+**What runs locally** (already + to add): unit/integration suite (280 tests) + the new process-e2e. **What needs the real stack**: Postgres `VARCHAR` enforcement, SQS redelivery/DLQ timing, Lambda-specific behavior, real Anthropic output.
+
+Order: **fix H1/H2 → add process-e2e test → push + one manual smoke test** (enqueue → CloudWatch → `GET /plan`).
+
+**Implemented (2026-09-17)**: `tests/integration/test_process_e2e.py` (route → capturing queue → `run_plan_generation` with fake LLM + real SQLite repo → `GET /plan`/`GET /plan-generation/status`) and `tests/unit/test_plan_generation_worker.py` (partial-batch-failure contract). `run_plan_generation` gained optional `repo`/`llm` params for test injection (also closes code-review LOW-8).
+
+### Verification gates (as of 2026-09-17)
+
+- `ruff check .`: clean.
+- `pytest`: **286 passed** (282 after H1/H2; +4 for the e2e + worker-unit tests).
+
+Status: Phase 0–4 complete; code-review H1 + H2 fixed; local process-e2e test in place. **Next: Phase 5** — Terraform (SQS + DLQ + event-source mapping + `PLAN_GENERATION_QUEUE_URL` + CloudWatch alarm), then push + one manual smoke test on the real stack. The Phase 4 worker now `complete_job`/`fail_job`s, so the event-source mapping can be enabled safely (the Phase 3/4 sequencing guard no longer applies).

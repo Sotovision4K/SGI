@@ -13,6 +13,7 @@ Derived from the spec:
 """
 
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -388,130 +389,299 @@ class TestFindingsRoutes:
 
 
 class TestGeneratePlanRoute:
-    def test_generate_plan_requires_findings_first(self, client):
+    """Async enqueue contract (Phase 3): POST /generate-plan → 202 {job_id}.
+
+    The route no longer calls the LLM synchronously; it snapshots findings +
+    pre-diagnosis, creates a `plan_jobs` row, and enqueues one SQS message.
+    """
+
+    def _fake_queue(self, side_effect=None):
+        q = MagicMock()
+        q.enqueue_plan_generation = AsyncMock(side_effect=side_effect)
+        return q
+
+    @staticmethod
+    @contextmanager
+    def _override_deps(app, mock_repo, queue):
+        """Swap in the fake repo + queue via dependency_overrides (patch() on
+        the module attribute is ineffective — Depends() captures the original
+        function at import time)."""
+        from src.routes.processes.routes import (
+            get_process_repository,
+            get_queue_adapter,
+        )
+
+        old_repo = app.dependency_overrides.get(get_process_repository)
+        old_queue = app.dependency_overrides.get(get_queue_adapter)
+        app.dependency_overrides[get_process_repository] = lambda: mock_repo
+        app.dependency_overrides[get_queue_adapter] = lambda: queue
+        try:
+            yield
+        finally:
+            if old_repo is not None:
+                app.dependency_overrides[get_process_repository] = old_repo
+            else:
+                app.dependency_overrides.pop(get_process_repository, None)
+            if old_queue is not None:
+                app.dependency_overrides[get_queue_adapter] = old_queue
+            else:
+                app.dependency_overrides.pop(get_queue_adapter, None)
+
+    @staticmethod
+    def _app():
+        from src.main import app
+        return app
+
+    def test_generate_plan_requires_findings_first(self, client, mock_current_user):
+        process = _make_process_for_owner(mock_current_user["sub"])
+
         mock_repo = MagicMock()
-        mock_repo.get_process = AsyncMock(return_value=MagicMock())
+        mock_repo.get_process = AsyncMock(return_value=process)
         mock_repo.get_finding = AsyncMock(return_value=None)
 
-        with patch(
-            "src.routes.processes.routes.get_process_repository",
-            return_value=lambda: mock_repo,
-        ), patch(
-            "src.routes.processes.routes.get_anthropic_adapter",
-            return_value=lambda: MagicMock(generate_plan=AsyncMock()),
-        ):
-            r = client.post(f"/processes/{uuid.uuid4()}/generate-plan")
-        # 400 because no findings yet
-        print(f"\nStatus: {r.status_code}, Body: {r.text[:300]}")
-        assert r.status_code in (400, 404, 500, 422)
+        with self._override_deps(self._app(), mock_repo, self._fake_queue()):
+            r = client.post(f"/processes/{process.id}/generate-plan")
+
+        assert r.status_code == 400, f"got {r.status_code}: {r.text[:300]}"
 
     def test_generate_plan_requires_process_exists(self, client):
-        from src.main import app as fastapi_app
-        from src.routes.processes.routes import get_process_repository, get_anthropic_adapter
-
         mock_repo = MagicMock()
         mock_repo.get_process = AsyncMock(return_value=None)
-        mock_llm = MagicMock()
-        mock_llm.generate_plan = AsyncMock()
 
-        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
-        fastapi_app.dependency_overrides[get_anthropic_adapter] = lambda: mock_llm
-        try:
+        with self._override_deps(self._app(), mock_repo, self._fake_queue()):
             r = client.post(f"/processes/{uuid.uuid4()}/generate-plan")
-        finally:
-            fastapi_app.dependency_overrides.pop(get_process_repository, None)
-            fastapi_app.dependency_overrides.pop(get_anthropic_adapter, None)
+
         assert r.status_code == 404, f"got {r.status_code}: {r.text[:300]}"
 
-    def test_generate_plan_returns_502_on_llm_failure(self, client, mock_current_user):
+    def test_generate_plan_enqueues_and_returns_202(self, client, mock_current_user):
         from src.domain.entities.finding import Finding
-        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
-        from src.main import app as fastapi_app
-        from src.routes.processes.routes import get_process_repository, get_anthropic_adapter
+        from src.domain.entities.plan_job import PlanJob
 
-        process = Process(
-            id=uuid.uuid4(),
-            consultant_id=uuid.UUID(mock_current_user["sub"]),
-            company_id=uuid.uuid4(),
-            iso_standard=IsoStandard.ISO_9001,
-            status=ProcessStatus.IN_DIAGNOSIS,
+        process = _make_process_for_owner(mock_current_user["sub"])
+        finding = Finding(
+            process_id=process.id,
+            answers={"q1": "yes"},
+            free_text="",
+            updated_at=datetime.now(timezone.utc),
         )
-        finding = Finding(process_id=process.id, answers={"q": "a"}, free_text="")
+        created_job = PlanJob(
+            process_id=process.id,
+            consultant_id=process.consultant_id,
+        )
 
         mock_repo = MagicMock()
         mock_repo.get_process = AsyncMock(return_value=process)
         mock_repo.get_finding = AsyncMock(return_value=finding)
+        mock_repo.get_completed_count = AsyncMock(return_value=0)
+        mock_repo.get_active_job = AsyncMock(return_value=None)
+        mock_repo.create_plan_job = AsyncMock(return_value=created_job)
 
-        mock_llm = MagicMock()
-        mock_llm.generate_plan = AsyncMock(side_effect=RuntimeError("LLM down"))
+        queue = self._fake_queue()
 
-        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
-        fastapi_app.dependency_overrides[get_anthropic_adapter] = lambda: mock_llm
-        try:
+        with self._override_deps(self._app(), mock_repo, queue):
             r = client.post(f"/processes/{process.id}/generate-plan")
-        finally:
-            fastapi_app.dependency_overrides.pop(get_process_repository, None)
-            fastapi_app.dependency_overrides.pop(get_anthropic_adapter, None)
 
-        assert r.status_code in (404, 502), f"got {r.status_code}: {r.text[:300]}"
+        assert r.status_code == 202, f"got {r.status_code}: {r.text[:300]}"
+        body = r.json()
+        assert body["job_id"] == str(process.id)
+        assert body["status"] == "queued"
+        queue.enqueue_plan_generation.assert_awaited_once_with(
+            process.id, process.consultant_id
+        )
 
-    def test_generate_plan_returns_plan_with_tasks(self, client):
-        # Process exists
-        process = MagicMock()
-        process.id = uuid.uuid4()
-        process.iso_standard.value = "iso9001"
+        # Snapshot consistency (spec §2 decision 11): the job must capture the
+        # findings + pre-diagnosis the user submitted, not the live DB.
+        snapshot = mock_repo.create_plan_job.call_args.args[0]
+        assert snapshot.findings_snapshot == {
+            "answers": finding.answers,
+            "free_text": finding.free_text,
+        }
+        assert snapshot.pre_diagnosis_snapshot == process.pre_diagnosis
+        assert snapshot.source_updated_at == finding.updated_at.isoformat()
+        assert snapshot.consultant_id == process.consultant_id
 
-        # Findings exist
-        finding = MagicMock()
-        finding.answers = {"q1": "11-50"}
-        finding.free_text = "Manufactura mediana"
+    def test_generate_plan_429_when_cap_reached(self, client, mock_current_user):
+        from src.domain.entities.finding import Finding
 
-        # LLM returns a plan
+        process = _make_process_for_owner(mock_current_user["sub"])
+        finding = Finding(process_id=process.id, answers={"q1": "yes"})
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_finding = AsyncMock(return_value=finding)
+        mock_repo.get_completed_count = AsyncMock(return_value=3)
+
+        with self._override_deps(self._app(), mock_repo, self._fake_queue()):
+            r = client.post(f"/processes/{process.id}/generate-plan")
+
+        assert r.status_code == 429, f"got {r.status_code}: {r.text[:300]}"
+
+    def test_generate_plan_reuses_active_job_without_reenqueue(
+        self, client, mock_current_user
+    ):
+        from src.domain.entities.finding import Finding
+        from src.domain.entities.plan_job import PlanJob, PlanJobStatus
+
+        process = _make_process_for_owner(mock_current_user["sub"])
+        finding = Finding(process_id=process.id, answers={"q1": "yes"})
+        active = PlanJob(
+            process_id=process.id,
+            consultant_id=process.consultant_id,
+            status=PlanJobStatus.RUNNING,
+        )
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_finding = AsyncMock(return_value=finding)
+        mock_repo.get_completed_count = AsyncMock(return_value=0)
+        mock_repo.get_active_job = AsyncMock(return_value=active)
+
+        queue = self._fake_queue()
+
+        with self._override_deps(self._app(), mock_repo, queue):
+            r = client.post(f"/processes/{process.id}/generate-plan")
+
+        assert r.status_code == 202, f"got {r.status_code}: {r.text[:300]}"
+        body = r.json()
+        assert body["job_id"] == str(process.id)
+        assert body["status"] == "running"
+        queue.enqueue_plan_generation.assert_not_awaited()
+
+    def test_generate_plan_503_on_enqueue_failure(self, client, mock_current_user):
+        from src.domain.entities.finding import Finding
+        from src.domain.entities.plan_job import PlanJob
+        from src.errors import QueueEnqueueError
+
+        process = _make_process_for_owner(mock_current_user["sub"])
+        finding = Finding(
+            process_id=process.id,
+            answers={"q1": "yes"},
+            updated_at=datetime.now(timezone.utc),
+        )
+        created_job = PlanJob(
+            process_id=process.id,
+            consultant_id=process.consultant_id,
+        )
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_finding = AsyncMock(return_value=finding)
+        mock_repo.get_completed_count = AsyncMock(return_value=0)
+        mock_repo.get_active_job = AsyncMock(return_value=None)
+        mock_repo.create_plan_job = AsyncMock(return_value=created_job)
+        mock_repo.fail_job = AsyncMock()
+
+        queue = self._fake_queue(side_effect=QueueEnqueueError("boom"))
+
+        with self._override_deps(self._app(), mock_repo, queue):
+            r = client.post(f"/processes/{process.id}/generate-plan")
+
+        assert r.status_code == 503, f"got {r.status_code}: {r.text[:300]}"
+        mock_repo.fail_job.assert_awaited_once()
+
+
+class TestPlanGenerationStatusRoute:
+    """GET /plan-generation/status — polling surface for the async worker."""
+
+    def _job(self, process, status="running", error=None):
+        from src.domain.entities.plan_job import PlanJob, PlanJobStatus
+
+        return PlanJob(
+            process_id=process.id,
+            consultant_id=process.consultant_id,
+            status=PlanJobStatus(status),
+            error=error,
+        )
+
+    def test_status_returns_job_fields(self, client, mock_current_user):
+        process = _make_process_for_owner(mock_current_user["sub"])
+        job = self._job(process)
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_plan_job = AsyncMock(return_value=job)
+
+        with TestGeneratePlanRoute._override_deps(
+            self._app(), mock_repo, TestGeneratePlanRoute()._fake_queue()
+        ):
+            r = client.get(f"/processes/{process.id}/plan-generation/status")
+
+        assert r.status_code == 200, f"got {r.status_code}: {r.text[:300]}"
+        body = r.json()
+        assert body["process_id"] == str(process.id)
+        assert body["status"] == "running"
+        assert body["error"] is None
+        assert set(body["segments"].keys()) == {"B1", "B2", "B3"}
+        assert "created_at" in body
+        assert "updated_at" in body
+
+    def test_status_404_when_no_job(self, client, mock_current_user):
+        process = _make_process_for_owner(mock_current_user["sub"])
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_plan_job = AsyncMock(return_value=None)
+
+        with TestGeneratePlanRoute._override_deps(
+            self._app(), mock_repo, TestGeneratePlanRoute()._fake_queue()
+        ):
+            r = client.get(f"/processes/{process.id}/plan-generation/status")
+
+        assert r.status_code == 404, f"got {r.status_code}: {r.text[:300]}"
+
+    @staticmethod
+    def _app():
+        from src.main import app
+        return app
+
+
+class TestGetPlanNewTaskFields:
+    """GET /plan must expose source_clause / require_document / document_title."""
+
+    def test_get_plan_exposes_new_task_fields(self, client, mock_current_user):
         from src.domain.entities.plan import Plan, Task, TaskPriority
 
-        generated = Plan(
+        process = _make_process_for_owner(mock_current_user["sub"])
+        plan = Plan(
             id=uuid.uuid4(),
             process_id=process.id,
-            summary_md="Resumen.",
+            summary_md="Resumen",
             tasks=[
                 Task(
                     id=uuid.uuid4(),
                     plan_id=uuid.uuid4(),
-                    title="Doc política",
+                    title="Documentar política",
                     description="...",
                     priority=TaskPriority.HIGH,
                     estimated_effort="1 semana",
                     owner_role="Gerente",
                     sort_order=0,
+                    source_clause="5.2",
+                    require_document=True,
+                    document_title="Manual de política",
                 )
             ],
         )
 
         mock_repo = MagicMock()
         mock_repo.get_process = AsyncMock(return_value=process)
-        mock_repo.get_finding = AsyncMock(return_value=finding)
-        mock_repo.replace_plan = AsyncMock(return_value=generated)
-        mock_repo.update_process_status = AsyncMock()
+        mock_repo.get_plan = AsyncMock(return_value=plan)
 
-        mock_llm = MagicMock()
-        mock_llm.generate_plan = AsyncMock(return_value=generated)
-
-        with patch(
-            "src.routes.processes.routes.get_process_repository",
-            return_value=lambda: mock_repo,
-        ), patch(
-            "src.routes.processes.routes.get_anthropic_adapter",
-            return_value=lambda: mock_llm,
+        with TestGeneratePlanRoute._override_deps(
+            self._app(), mock_repo, TestGeneratePlanRoute()._fake_queue()
         ):
-            r = client.post(f"/processes/{process.id}/generate-plan")
+            r = client.get(f"/processes/{process.id}/plan")
 
-        if r.status_code == 200:
-            body = r.json()
-            assert "summary_md" in body
-            assert "tasks" in body
-            assert len(body["tasks"]) == 1
-            assert body["tasks"][0]["priority"] == "high"
-            mock_repo.update_process_status.assert_called_once()
+        assert r.status_code == 200, f"got {r.status_code}: {r.text[:300]}"
+        task = r.json()["tasks"][0]
+        assert task["source_clause"] == "5.2"
+        assert task["require_document"] is True
+        assert task["document_title"] == "Manual de política"
+
+    @staticmethod
+    def _app():
+        from src.main import app
+        return app
 
 
 # ---- IDOR (Insecure Direct Object Reference) Tests -------------------------
@@ -647,7 +817,7 @@ class TestIdorProcesses:
         """IDOR test: attacker cannot generate a plan on foreign process."""
         process = _make_process_for_owner(mock_current_user["sub"])
         from src.main import app as fastapi_app
-        from src.routes.processes.routes import get_process_repository, get_anthropic_adapter
+        from src.routes.processes.routes import get_process_repository, get_queue_adapter
 
         finding = MagicMock()
         finding.answers = {"q": "a"}
@@ -656,15 +826,13 @@ class TestIdorProcesses:
         mock_repo = MagicMock()
         mock_repo.get_process = AsyncMock(return_value=process)
         mock_repo.get_finding = AsyncMock(return_value=finding)
-        mock_repo.replace_plan = AsyncMock()
-        mock_repo.update_process_status = AsyncMock()
-        mock_llm = MagicMock()
-        mock_llm.generate_plan = AsyncMock()
+        mock_queue = MagicMock()
+        mock_queue.enqueue_plan_generation = AsyncMock()
 
         old_repo = fastapi_app.dependency_overrides.get(get_process_repository)
-        old_llm = fastapi_app.dependency_overrides.get(get_anthropic_adapter)
+        old_queue = fastapi_app.dependency_overrides.get(get_queue_adapter)
         fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
-        fastapi_app.dependency_overrides[get_anthropic_adapter] = lambda: mock_llm
+        fastapi_app.dependency_overrides[get_queue_adapter] = lambda: mock_queue
         old_auth = _override_auth(fastapi_app, attacker_user)
         try:
             r = client.post(f"/processes/{process.id}/generate-plan")
@@ -674,12 +842,13 @@ class TestIdorProcesses:
                 fastapi_app.dependency_overrides[get_process_repository] = old_repo
             else:
                 fastapi_app.dependency_overrides.pop(get_process_repository, None)
-            if old_llm is not None:
-                fastapi_app.dependency_overrides[get_anthropic_adapter] = old_llm
+            if old_queue is not None:
+                fastapi_app.dependency_overrides[get_queue_adapter] = old_queue
             else:
-                fastapi_app.dependency_overrides.pop(get_anthropic_adapter, None)
+                fastapi_app.dependency_overrides.pop(get_queue_adapter, None)
         assert r.status_code in (403, 404), \
             f"Attacker should NOT generate plan on foreign process, got {r.status_code}: {r.text[:200]}"
+        mock_queue.enqueue_plan_generation.assert_not_awaited()
 
     def test_get_findings_on_foreign_process_blocked(self, client, mock_current_user, attacker_user):
         """IDOR test: attacker cannot read findings from another user's process."""

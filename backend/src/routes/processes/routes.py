@@ -8,12 +8,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.finding import Finding
-from src.domain.entities.plan import Plan, Task
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
+from src.domain.entities.plan_job import PlanJob, make_default_segments
 from src.adapters.db.process_repository import ProcessRepository
 from src.adapters.db.company_repository import CompanyRepository
-from src.adapters.llm.llm_port import LLMPort
-from src.adapters.llm.anthropic_adapter import get_anthropic_adapter
+from src.adapters.queue.queue_port import QueuePort
+from src.adapters.queue.sqs_adapter import get_queue_adapter
+from src.errors import GenerationLimitError, MissingFindingsError, QueueEnqueueError, JobErrorCode
 from src.routes.rate_limit import check_rate_limit
 from src.adapters.email.email_port import EmailPort
 from src.adapters.email.ses_adapter import get_email_adapter
@@ -23,6 +24,10 @@ from src.routes.user.auth import CurrentUserDep
 router = APIRouter(prefix="/processes", tags=["processes"])
 
 logger = logging.getLogger(__name__)
+
+# Hard cap on successful generations per process (spec §2). Only `completed`
+# jobs count against it — failed/running/queued jobs do not burn an attempt.
+_GENERATION_CAP = 3
 
 
 def get_process_repository(settings: Settings = Depends(get_settings)) -> ProcessRepository:
@@ -35,7 +40,7 @@ def get_company_repository(settings: Settings = Depends(get_settings)) -> Compan
 
 ProcessRepositoryDep = Annotated[ProcessRepository, Depends(get_process_repository)]
 CompanyRepositoryDep = Annotated[CompanyRepository, Depends(get_company_repository)]
-LLMDep = Annotated[LLMPort, Depends(get_anthropic_adapter)]
+QueueDep = Annotated[QueuePort, Depends(get_queue_adapter)]
 EmailDep = Annotated[EmailPort, Depends(get_email_adapter)]
 
 
@@ -76,8 +81,21 @@ class ProcessDetailResponse(BaseModel):
 
 
 class UpsertFindingsRequest(BaseModel):
+    # Length caps (security audit H1): free_text and each answer value are
+    # bounded at the boundary so an oversized submission can't bloat the
+    # snapshot and then every bucket prompt across retries/redeliveries.
     answers: dict[str, Any] = Field(default_factory=dict)
-    free_text: str = ""
+    free_text: str = Field(default="", max_length=5000)
+
+    @field_validator("answers")
+    @classmethod
+    def validate_answer_lengths(cls, v: dict[str, Any]) -> dict[str, Any]:
+        for key, value in v.items():
+            if isinstance(value, str) and len(value) > 2000:
+                raise ValueError(
+                    f"El valor de '{key}' excede el límite de 2000 caracteres"
+                )
+        return v
 
 
 class FindingsResponse(BaseModel):
@@ -95,6 +113,9 @@ class TaskSchema(BaseModel):
     estimated_effort: str
     owner_role: str
     sort_order: int
+    source_clause: str = ""
+    require_document: bool = False
+    document_title: str | None = None
 
 
 class PlanResponse(BaseModel):
@@ -102,6 +123,20 @@ class PlanResponse(BaseModel):
     summary_md: str
     generated_at: str
     tasks: list[TaskSchema]
+
+
+class PlanGenerationEnqueueResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+class PlanGenerationStatusResponse(BaseModel):
+    process_id: str
+    status: str
+    error: str | None = None
+    segments: dict[str, Any] = Field(default_factory=dict)
+    created_at: str
+    updated_at: str
 
 
 # ---- Helpers ---------------------------------------------------------------
@@ -194,7 +229,9 @@ async def list_processes(
     status: str | None = Query(None, enum=["active", "completed"]),
 ) -> ProcessListResponse:
     sub = current_user.get("sub")
-    consultant_id = UUID(sub) if sub else None
+    if not sub:
+        raise HTTPException(status_code=400, detail="Sub claim requerido")
+    consultant_id = UUID(sub)
     rows = await repo.list_processes_with_company(consultant_id=consultant_id, status=status)
     items = [_process_to_item(p, name) for p, name in rows]
     return ProcessListResponse(items=items, total=len(items))
@@ -395,77 +432,118 @@ async def get_plan(
                 estimated_effort=t.estimated_effort,
                 owner_role=t.owner_role,
                 sort_order=t.sort_order,
+                source_clause=t.source_clause,
+                require_document=t.require_document,
+                document_title=t.document_title,
             )
             for t in plan.tasks
         ],
     )
 
 
-@router.post("/{process_id}/generate-plan", response_model=PlanResponse)
+@router.post(
+    "/{process_id}/generate-plan",
+    response_model=PlanGenerationEnqueueResponse,
+    status_code=202,
+)
 async def generate_plan(
     process_id: UUID,
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
-    llm: LLMDep,
-) -> PlanResponse:
+    queue: QueueDep,
+) -> PlanGenerationEnqueueResponse:
+    """Enqueue an async plan generation (snapshot + one SQS message).
+
+    Flow (spec §2/§4):
+    - auth + rate-limit + ownership
+    - missing findings → 400
+    - hard cap reached → 429
+    - an active job already exists → idempotent 202 reuse (no re-enqueue)
+    - else snapshot findings+pre_diagnosis → create_plan_job → SQS send → 202
+    """
     check_rate_limit(current_user.get("sub", "unknown"), max_requests=5, window=60)
     process = await _require_process_owner(process_id, repo, current_user)
 
     finding = await repo.get_finding(process_id)
     if finding is None or not finding.answers:
-        raise HTTPException(
-            status_code=400,
-            detail="Debe completar el diagnóstico antes de generar el plan",
+        raise MissingFindingsError(
+            "Debe completar el diagnóstico antes de generar el plan"
+        )
+
+    completed = await repo.get_completed_count(process_id)
+    if completed >= _GENERATION_CAP:
+        raise GenerationLimitError(
+            f"Límite de generaciones alcanzado ({_GENERATION_CAP})"
+        )
+
+    active = await repo.get_active_job(process_id)
+    if active is not None:
+        return PlanGenerationEnqueueResponse(
+            job_id=str(active.process_id),
+            status=active.status.value,
+        )
+
+    job = PlanJob(
+        process_id=process_id,
+        consultant_id=process.consultant_id,
+        findings_snapshot={"answers": finding.answers, "free_text": finding.free_text},
+        pre_diagnosis_snapshot=process.pre_diagnosis,
+        source_updated_at=finding.updated_at.isoformat(),
+        segments=make_default_segments(),
+    )
+    created = await repo.create_plan_job(job)
+
+    # Re-check the cap against the row we just wrote: the initial read above is
+    # a snapshot, and a concurrent worker could have completed a generation in
+    # between, pushing `completed_count` to the cap after we passed the check.
+    # The upsert preserves the cumulative counter, so the returned row is
+    # authoritative.
+    if created.completed_count >= _GENERATION_CAP:
+        await repo.fail_job(process_id, JobErrorCode.GENERATION_LIMIT_EXCEEDED)
+        raise GenerationLimitError(
+            f"Límite de generaciones alcanzado ({_GENERATION_CAP})"
         )
 
     try:
-        raw_plan = await llm.generate_plan(
-            iso_standard=process.iso_standard.value,
-            findings={"answers": finding.answers, "free_text": finding.free_text},
-            pre_diagnosis=process.pre_diagnosis,
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail="Error al generar el plan. Intente nuevamente.",
-        ) from exc
-
-    plan = Plan(
-        id=raw_plan.id,
-        process_id=process_id,
-        summary_md=raw_plan.summary_md,
-        tasks=[
-            Task(
-                id=t.id,
-                plan_id=raw_plan.id,
-                title=t.title,
-                description=t.description,
-                priority=t.priority,
-                estimated_effort=t.estimated_effort,
-                owner_role=t.owner_role,
-                sort_order=t.sort_order,
+        await queue.enqueue_plan_generation(process_id, process.consultant_id)
+    except QueueEnqueueError:
+        # Job row exists but no message will ever reach the worker — mark it
+        # failed so the user can retry cleanly rather than leaving a wedged
+        # `queued` job. Re-raise → 503 via the global handler.
+        try:
+            await repo.fail_job(process_id, JobErrorCode.QUEUE_ENQUEUE_FAILED)
+        except Exception:  # noqa: BLE001 — DB failure must not mask the 503
+            logger.error(
+                "Failed to mark job failed after enqueue error | process=%s",
+                process_id,
+                exc_info=True,
             )
-            for t in raw_plan.tasks
-        ],
+        raise
+
+    return PlanGenerationEnqueueResponse(
+        job_id=str(created.process_id),
+        status=created.status.value,
     )
 
-    saved = await repo.replace_plan(plan)
-    await repo.update_process_status(process_id, ProcessStatus.PLAN_READY)
 
-    return PlanResponse(
-        process_id=str(saved.process_id),
-        summary_md=saved.summary_md,
-        generated_at=saved.generated_at.isoformat(),
-        tasks=[
-            TaskSchema(
-                id=str(t.id),
-                title=t.title,
-                description=t.description,
-                priority=t.priority.value,
-                estimated_effort=t.estimated_effort,
-                owner_role=t.owner_role,
-                sort_order=t.sort_order,
-            )
-            for t in saved.tasks
-        ],
+@router.get(
+    "/{process_id}/plan-generation/status",
+    response_model=PlanGenerationStatusResponse,
+)
+async def get_plan_generation_status(
+    process_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> PlanGenerationStatusResponse:
+    await _require_process_owner(process_id, repo, current_user)
+    job = await repo.get_plan_job(process_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="No hay generación en curso")
+    return PlanGenerationStatusResponse(
+        process_id=str(job.process_id),
+        status=job.status.value,
+        error=job.error,
+        segments=job.segments,
+        created_at=job.created_at.isoformat(),
+        updated_at=job.updated_at.isoformat(),
     )

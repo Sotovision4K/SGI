@@ -14,6 +14,8 @@ write, and generation-limit) extend the base directly because they are handled
 by dedicated code paths rather than the generic retry/terminal policy.
 """
 
+from enum import Enum
+
 
 class PlanGenerationError(Exception):
     """Base error for the action-plan generation pipeline.
@@ -78,3 +80,20 @@ class AuditLogWriteError(PlanGenerationError):
 
 class GenerationLimitError(PlanGenerationError):
     """A generation limit was exceeded."""
+
+
+class JobErrorCode(str, Enum):
+    """Fixed, sanitized codes persisted in ``plan_jobs.error``.
+
+    # Q: Why an enum instead of persisting ``str(exc)``?
+    # A: Raw exception strings can leak internal details (SQL fragments, host
+    #    names, SDK stack traces) into the DB and CloudWatch. A closed set of
+    #    codes keeps the error field stable for the frontend to render a
+    #    user-facing message and safe to log.
+    """
+
+    QUEUE_ENQUEUE_FAILED = "queue_enqueue_failed"
+    GENERATION_LIMIT_EXCEEDED = "generation_limit_exceeded"
+    SEGMENT_GENERATION_FAILED = "segment_generation_failed"
+    MERGE_FAILED = "merge_failed"
+    PLAN_PERSIST_FAILED = "plan_persist_failed"

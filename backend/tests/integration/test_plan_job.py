@@ -8,14 +8,16 @@ Covers the async job lifecycle against a real in-memory SQLite async engine:
 """
 
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
-from src.adapters.db.process_repository import ProcessRepository
+from src.adapters.db.process_repository import ProcessRepository, PlanJobTable
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus, make_default_segments
+from src.errors import JobErrorCode
 
 
 @pytest.fixture
@@ -75,6 +77,20 @@ class TestPlanJobCrud:
         assert result.status == PlanJobStatus.QUEUED
 
     @pytest.mark.asyncio
+    async def test_create_job_noop_while_running(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)  # queued -> running
+
+        # A duplicate enqueue while running must not reset the active job.
+        duplicate = _make_job(process_id=job.process_id, consultant_id=job.consultant_id)
+        duplicate.source_updated_at = "2026-09-17T00:00:00+00:00"
+        result = await repo.create_plan_job(duplicate)
+
+        assert result.status == PlanJobStatus.RUNNING
+        assert result.source_updated_at == "2026-09-16T10:00:00+00:00"
+
+    @pytest.mark.asyncio
     async def test_create_job_replaces_failed_and_preserves_count(self, repo):
         job = _make_job()
         await repo.create_plan_job(job)
@@ -85,7 +101,7 @@ class TestPlanJobCrud:
         # Re-enqueue (regenerate) replaces the completed row → fresh queued job.
         await repo.create_plan_job(_make_job(job.process_id, job.consultant_id))
         assert await repo.claim_job(job.process_id, job.consultant_id) is True
-        await repo.fail_job(job.process_id, "boom")
+        await repo.fail_job(job.process_id, JobErrorCode.SEGMENT_GENERATION_FAILED)
 
         # Re-enqueue after failure must reset to queued AND keep completed_count.
         replacement = _make_job(job.process_id, job.consultant_id)
@@ -179,14 +195,41 @@ class TestPlanJobTransitions:
         await repo.create_plan_job(job)
         await repo.claim_job(job.process_id, job.consultant_id)
 
-        await repo.fail_job(job.process_id, "LLM timeout")
+        await repo.fail_job(job.process_id, JobErrorCode.SEGMENT_GENERATION_FAILED)
 
         loaded = await repo.get_plan_job(job.process_id)
         assert loaded.status == PlanJobStatus.FAILED
-        assert loaded.error == "LLM timeout"
+        assert loaded.error == JobErrorCode.SEGMENT_GENERATION_FAILED.value
         assert loaded.failed_attempts == 1
         # Failed jobs do NOT burn a generation attempt.
         assert loaded.completed_count == 0
+
+    @pytest.mark.asyncio
+    async def test_fail_job_from_queued(self, repo):
+        # Regression (Phase 3): the enqueue route fails a job when the SQS
+        # send fails — at that point the job is still `queued`, never claimed.
+        # fail_job must accept that state, or the process wedges in `queued`.
+        job = _make_job()
+        await repo.create_plan_job(job)
+
+        await repo.fail_job(job.process_id, JobErrorCode.QUEUE_ENQUEUE_FAILED)
+
+        loaded = await repo.get_plan_job(job.process_id)
+        assert loaded.status == PlanJobStatus.FAILED
+        assert loaded.error == JobErrorCode.QUEUE_ENQUEUE_FAILED.value
+        assert loaded.failed_attempts == 1
+
+    @pytest.mark.asyncio
+    async def test_fail_job_does_not_touch_completed(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)
+        await repo.complete_job(job.process_id)
+
+        await repo.fail_job(job.process_id, JobErrorCode.MERGE_FAILED)
+
+        loaded = await repo.get_plan_job(job.process_id)
+        assert loaded.status == PlanJobStatus.COMPLETED
 
 
 class TestPlanJobLookups:
@@ -210,3 +253,49 @@ class TestPlanJobLookups:
     @pytest.mark.asyncio
     async def test_get_plan_job_missing_returns_none(self, repo):
         assert await repo.get_plan_job(uuid.uuid4()) is None
+
+
+class TestPlanJobLease:
+    """Stale-lease recovery (decision 19): reclaim stale `running`, requeue on retry."""
+
+    async def _age_heartbeat(self, repo, process_id: uuid.UUID, seconds: int) -> None:
+        """Set `updated_at` back in time to simulate a crashed/expired worker."""
+        stale = (datetime.now(timezone.utc) - timedelta(seconds=seconds)).isoformat()
+        async with AsyncSession(repo._engine) as session:
+            row = await session.get(PlanJobTable, process_id)
+            row.updated_at = stale
+            await session.commit()
+
+    @pytest.mark.asyncio
+    async def test_claim_reclaims_stale_running(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)  # running
+
+        # Age the heartbeat beyond the 180s lease TTL.
+        await self._age_heartbeat(repo, job.process_id, seconds=200)
+
+        # A redelivered message must reclaim the stale `running` job.
+        assert await repo.claim_job(job.process_id, job.consultant_id) is True
+
+    @pytest.mark.asyncio
+    async def test_claim_does_not_reclaim_fresh_running(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)  # running, fresh
+
+        # Fresh lease (heartbeat just written) must NOT be reclaimed.
+        assert await repo.claim_job(job.process_id, job.consultant_id) is False
+
+    @pytest.mark.asyncio
+    async def test_requeue_job_releases_running(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)  # running
+
+        await repo.requeue_job(job.process_id)
+
+        loaded = await repo.get_plan_job(job.process_id)
+        assert loaded.status == PlanJobStatus.QUEUED
+        # Requeued job is claimable again through the normal path.
+        assert await repo.claim_job(job.process_id, job.consultant_id) is True

@@ -37,7 +37,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from src.services.sanitizer import sanitize_single_answer
+from src.services.sanitizer import MAX_FREE_TEXT_LENGTH, sanitize_single_answer
 
 # Q: How does prompt_builder find its template and data files across environments?
 # A: Env vars provide absolute paths in Lambda; __file__-relative paths serve as
@@ -109,8 +109,8 @@ def build_system_prompt(
     Parameters
     ----------
     company_name:
-        The company's name (developer-controlled, sourced from the DB/process
-        table — sanitized upstream).
+        The company's name (user-supplied at company creation — sanitized here,
+        not upstream).
     iso_standard:
         The ISO standard identifier, e.g. ``"iso9001"``.
     certification_goal:
@@ -133,10 +133,53 @@ def build_system_prompt(
     # placeholder as blank, which is acceptable and keeps the call simple.
     template = load_template("generate_plan_system.txt")
     return template.format(
-        company_name=company_name,
+        company_name=sanitize_single_answer(company_name),
         iso_standard=iso_standard,
         certification_goal=certification_goal,
     )
+
+
+def build_certification_goal(pre_diagnosis: dict[str, Any] | None = None) -> str:
+    """Compose a concise Spanish certification-goal summary from pre-diagnosis.
+
+    The goal is user input captured in the pre-diagnosis "Objetivos de
+    certificación" group (``pd_target_date``/``pd_motivation``/``pd_cert_type``/
+    ``pd_scope``) plus the ``pd_objectives`` chips. It feeds the system prompt's
+    prominent "Objetivo de certificación" section (decision 20).
+
+    Returns "" when no goal-related fields are present.
+    """
+    if not pre_diagnosis:
+        return ""
+
+    def _clean(value: Any) -> str:
+        # Sanitize each field — the goal text is user-derived and reaches the
+        # system prompt, so it gets the same injection scrub as answers.
+        return sanitize_single_answer(str(value))
+
+    parts: list[str] = []
+    target = pre_diagnosis.get("pd_target_date")
+    cert_type = pre_diagnosis.get("pd_cert_type")
+    motivation = pre_diagnosis.get("pd_motivation")
+    scope = pre_diagnosis.get("pd_scope")
+    objectives = pre_diagnosis.get("pd_objectives")
+
+    if target:
+        parts.append(f"Certificarse en {_clean(target)}")
+    if cert_type:
+        parts.append(f"({_clean(cert_type)})")
+    if motivation:
+        parts.append(f"motivado por {_clean(motivation)}")
+    if scope:
+        parts.append(f"alcance: {_clean(scope)}")
+    if objectives:
+        if isinstance(objectives, (list, tuple)):
+            objectives = ", ".join(_clean(o) for o in objectives)
+        else:
+            objectives = _clean(objectives)
+        parts.append(f"objetivos estratégicos: {objectives}")
+
+    return " ".join(parts)
 
 
 def build_shared_context(
@@ -144,6 +187,7 @@ def build_shared_context(
     iso_standard: str,
     pre_diagnosis: dict[str, Any] | None = None,
     certification_goal: str = "",
+    free_text: str = "",
 ) -> str:
     """Build the shared context block common to every bucket message.
 
@@ -157,6 +201,8 @@ def build_shared_context(
         Optional mapping of pre-diagnosis fields (e.g. ``pd_sector``).
     certification_goal:
         Optional certification goal text.
+    free_text:
+        Optional user free-form notes from the diagnosis (sanitized).
 
     Returns
     -------
@@ -171,7 +217,7 @@ def build_shared_context(
     # Decision: f-strings are compile-time, so any ``{...}`` inside a value
     # remains literal and cannot be interpreted as a format token.
     lines: list[str] = [
-        f"- Empresa: {company_name}",
+        f"- Empresa: {sanitize_single_answer(company_name)}",
         f"- Norma ISO: {iso_standard}",
     ]
     if certification_goal:
@@ -181,8 +227,15 @@ def build_shared_context(
         lines.append("- Pre-diagnóstico:")
         for key, value in pre_diagnosis.items():
             # f-string interpolation: `value` is inserted verbatim; braces
-            # or '$' inside it are NOT treated as format tokens.
-            lines.append(f"  - {key}: {value}")
+            # or '$' inside it are NOT treated as format tokens. The value is
+            # still scrubbed for injection phrases (defense in depth).
+            lines.append(f"  - {key}: {sanitize_single_answer(str(value))}")
+
+    if free_text:
+        # Scrub then hard-truncate (mirrors sanitize_findings) so a single
+        # unbounded free-text note can't bloat all 3 bucket prompts × retries.
+        cleaned = sanitize_single_answer(free_text)[:MAX_FREE_TEXT_LENGTH]
+        lines.append(f"- Notas libres del diagnóstico: {cleaned}")
 
     return "\n".join(lines)
 
@@ -196,6 +249,7 @@ def build_bucket_prompt(
     iso_standard: str | None = None,
     pre_diagnosis: dict[str, Any] | None = None,
     certification_goal: str = "",
+    free_text: str = "",
 ) -> str:
     """Build the *user* role message for a single bucket.
 
@@ -211,7 +265,7 @@ def build_bucket_prompt(
         ``clause`` and ``es_label``.
     answers:
         Mapping of ``question_id`` -> sanitized answer text.
-    company_name, iso_standard, pre_diagnosis, certification_goal:
+    company_name, iso_standard, pre_diagnosis, certification_goal, free_text:
         Optional shared-context inputs. When provided they're rendered into the
         ``{shared_context}`` slot so the bucket message is self-contained.
 
@@ -265,6 +319,7 @@ def build_bucket_prompt(
             iso_standard=iso_standard,
             pre_diagnosis=pre_diagnosis,
             certification_goal=certification_goal,
+            free_text=free_text,
         )
     else:
         shared_context = (

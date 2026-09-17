@@ -266,6 +266,94 @@ class TestAnthropicAdapter:
             assert plan.tasks[0].priority == TaskPriority.MEDIUM
 
 
+class TestGenerateSegment:
+    """Phase 4: the per-segment LLM contract (generate_segment)."""
+
+    def _adapter(self, mock_client):
+        from src.adapters.llm.anthropic_adapter import AnthropicAdapter
+
+        return AnthropicAdapter(api_key="sk-test", model="claude-test-model")
+
+    def test_generate_segment_returns_usage_and_latency(self):
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+
+            tool_block = MagicMock()
+            tool_block.type = "tool_use"
+            tool_block.name = "emit_action_plan"
+            tool_block.input = {
+                "summary_md": "resumen",
+                "tasks": [
+                    {
+                        "title": "t",
+                        "description": "d",
+                        "priority": "high",
+                        "estimated_effort": "1d",
+                        "owner_role": "r",
+                        "require_document": True,
+                        "document_title": "doc",
+                    }
+                ],
+            }
+            response = MagicMock()
+            response.content = [tool_block]
+            usage = MagicMock()
+            usage.input_tokens = 100
+            usage.output_tokens = 50
+            response.usage = usage
+            mock_client.messages.create = AsyncMock(return_value=response)
+
+            import asyncio
+
+            result = asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+
+            assert result.summary_md == "resumen"
+            assert len(result.tasks) == 1
+            assert result.tasks[0].require_document is True
+            assert result.tasks[0].document_title == "doc"
+            assert result.input_tokens == 100
+            assert result.output_tokens == 50
+            assert result.latency_ms >= 0
+
+            # max_tokens default is the per-segment bound, not the old 4096.
+            assert mock_client.messages.create.call_args.kwargs["max_tokens"] == 1500
+
+    def test_generate_segment_tool_not_emitted_is_retryable(self):
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            response = MagicMock()
+            response.content = [MagicMock(type="text")]  # no tool_use block
+            mock_client.messages.create = AsyncMock(return_value=response)
+
+            import asyncio
+
+            from src.errors import ToolNotEmittedError
+
+            with pytest.raises(ToolNotEmittedError):
+                asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+
+    def test_generate_segment_maps_connection_error_to_retryable(self):
+        import anthropic
+        import httpx
+
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            mock_client.messages.create = AsyncMock(
+                side_effect=anthropic.APIConnectionError(message="boom", request=request)
+            )
+
+            import asyncio
+
+            from src.errors import LLMConnectionError
+
+            with pytest.raises(LLMConnectionError):
+                asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+
+
 class TestPromptInjectionMitigations:
     """CRITICAL-003: Tests for prompt injection hardening in the LLM adapter."""
 
