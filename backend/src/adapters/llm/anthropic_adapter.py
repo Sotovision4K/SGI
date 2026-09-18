@@ -10,6 +10,7 @@ from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.adapters.llm.llm_port import LLMPort, SegmentResult
 from src.errors import (
     LLMConnectionError,
+    LLMRequestRejectedError,
     LLMServiceError,
     LLMTimeoutError,
     RateLimitError,
@@ -120,10 +121,11 @@ class AnthropicAdapter:
         """Generate a single plan segment (bucket) via tool-use.
 
         Returns the segment's summary + tasks plus usage/latency for the audit
-        log. Maps SDK transport errors to ``RetryableError`` subclasses and a
-        missing tool call to ``ToolNotEmittedError`` (retryable), so the worker's
-        tenacity → SQS-redelivery → DLQ ladder can distinguish transient from
-        permanent failure.
+        log. Maps SDK transport errors to ``RetryableError`` subclasses,
+        permanent 4xx rejections to ``LLMRequestRejectedError`` (terminal,
+        M1), and a missing tool call to ``ToolNotEmittedError`` (retryable),
+        so the worker's tenacity → SQS-redelivery → DLQ ladder can
+        distinguish transient from permanent failure.
         """
         import time
 
@@ -136,7 +138,12 @@ class AnthropicAdapter:
         # A: anthropic's exceptions nest: RateLimitError ⊂ APIStatusError ⊂ APIError,
         #    and APITimeoutError/APIConnectionError ⊂ APIError (not APIStatusError).
         #    Catching most-specific-first maps each transient cause to its own
-        #    RetryableError subclass, with APIError as the final catch-all.
+        #    RetryableError subclass; the permanent-4xx branch (M1: BadRequest,
+        #    Authentication, PermissionDenied, NotFound, RequestTooLarge,
+        #    UnprocessableEntity — all ⊂ APIStatusError) must come BEFORE the
+        #    APIStatusError catch so a bad API key or over-context prompt fails
+        #    fast as terminal instead of burning ~9 retries, while APIError
+        #    remains the final catch-all.
         try:
             response = await self._client.messages.create(
                 model=self._model,
@@ -153,7 +160,19 @@ class AnthropicAdapter:
             raise LLMTimeoutError("LLM timed out during segment generation") from exc
         except anthropic_sdk.APIConnectionError as exc:
             raise LLMConnectionError("LLM connection error during segment generation") from exc
+        except (
+            anthropic_sdk.BadRequestError,
+            anthropic_sdk.AuthenticationError,
+            anthropic_sdk.PermissionDeniedError,
+            anthropic_sdk.NotFoundError,
+            anthropic_sdk.RequestTooLargeError,
+            anthropic_sdk.UnprocessableEntityError,
+        ) as exc:
+            # Permanent 4xx — retrying the identical request cannot succeed.
+            raise LLMRequestRejectedError("LLM rejected the segment request") from exc
         except anthropic_sdk.APIStatusError as exc:
+            # Remaining status errors (5xx: InternalServerError, Overloaded, …)
+            # stay retryable.
             raise LLMServiceError("LLM service error during segment generation") from exc
         except anthropic_sdk.APIError as exc:
             raise LLMServiceError("LLM API error during segment generation") from exc

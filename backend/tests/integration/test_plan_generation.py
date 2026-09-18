@@ -17,7 +17,13 @@ from src.adapters.llm.llm_port import SegmentResult
 from src.domain.entities.plan import Task, TaskPriority
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
 from src.domain.entities.process import IsoStandard, Process
-from src.errors import InvalidResponseError, JobErrorCode, RateLimitError, RetryableError
+from src.errors import (
+    InvalidResponseError,
+    JobErrorCode,
+    LeaseLostError,
+    RateLimitError,
+    RetryableError,
+)
 from src.services import plan_generation
 
 
@@ -164,7 +170,11 @@ class TestPlanGenerationPipeline:
     @pytest.mark.asyncio
     async def test_checkpoint_resume_skips_completed(self, repo):
         process, consultant_id = await _setup_job(repo)
-        # Pre-mark B1 completed (simulates a prior partial run / crash).
+        # Simulate a crashed prior run: the job was claimed (running), B1 was
+        # checkpointed as completed, then the worker released the lease for
+        # redelivery (requeue → queued). The checkpoint write itself must go
+        # through the `running` lease guard (M3).
+        await repo.claim_job(process.id, consultant_id)
         job = await repo.get_plan_job(process.id)
         segments = dict(job.segments)
         segments["B1"] = {
@@ -182,6 +192,7 @@ class TestPlanGenerationPipeline:
             "error": None,
         }
         await repo.update_job_segments(process.id, segments)
+        await repo.requeue_job(process.id)
 
         llm = FakeLLM()
         await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
@@ -210,6 +221,38 @@ class TestPlanGenerationPipeline:
         # The message must NOT have been treated as success — job still running.
         job = await repo.get_plan_job(process.id)
         assert job.status == PlanJobStatus.RUNNING
+
+    @pytest.mark.asyncio
+    async def test_lease_theft_mid_run_abandons_without_failing(self, repo):
+        # Regression (M3): SQS redelivery can put two workers on one job. When
+        # a checkpoint write detects the lost lease mid-run, generate() must
+        # abandon (return normally, ACKing the message) — NOT fail, complete,
+        # requeue, or persist a plan. The thief owns the job now.
+        process, consultant_id = await _setup_job(repo)
+        llm = FakeLLM()
+
+        original = repo.update_job_segments
+        calls = 0
+
+        async def steal_lease_on_second_checkpoint(process_id, segments):
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise LeaseLostError("lease stolen mid-run")
+            return await original(process_id, segments)
+
+        repo.update_job_segments = steal_lease_on_second_checkpoint
+
+        # Must return normally (no raise) despite the mid-run theft.
+        await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.RUNNING  # neither failed nor completed
+        assert job.error is None
+        assert job.failed_attempts == 0  # requeue_job NOT called
+        assert job.completed_count == 0  # complete_job NOT called
+        # No plan row was written.
+        assert await repo.get_plan(process.id) is None
 
 
 class TestMerge:

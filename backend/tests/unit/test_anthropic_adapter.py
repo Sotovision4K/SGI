@@ -15,7 +15,11 @@ import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import anthropic
+import httpx
 import pytest
+
+from src.errors import LLMRequestRejectedError, LLMServiceError, RateLimitError
 
 
 class TestLLMPortProtocol:
@@ -351,6 +355,62 @@ class TestGenerateSegment:
             from src.errors import LLMConnectionError
 
             with pytest.raises(LLMConnectionError):
+                asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+
+    @pytest.mark.parametrize(
+        ("sdk_error", "status_code"),
+        [
+            pytest.param(anthropic.BadRequestError, 400, id="bad-request-400"),
+            pytest.param(anthropic.AuthenticationError, 401, id="auth-401"),
+            pytest.param(anthropic.PermissionDeniedError, 403, id="permission-403"),
+            pytest.param(anthropic.NotFoundError, 404, id="not-found-404"),
+            pytest.param(anthropic.RequestTooLargeError, 413, id="request-too-large-413"),
+            pytest.param(anthropic.UnprocessableEntityError, 422, id="unprocessable-422"),
+        ],
+    )
+    def test_generate_segment_maps_permanent_4xx_to_terminal(self, sdk_error, status_code):
+        # M1 (Phase 5 §13.A.1): a bad API key (401) or over-context prompt
+        # (413) is permanent — it must fail fast as terminal, not burn ~9
+        # retries (~10 min) as retryable LLMServiceError.
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(status_code, request=request)
+            mock_client.messages.create = AsyncMock(
+                side_effect=sdk_error("rejected", response=response, body=None)
+            )
+
+            import asyncio
+
+            with pytest.raises(LLMRequestRejectedError):
+                asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+
+    @pytest.mark.parametrize(
+        ("sdk_error", "status_code", "expected"),
+        [
+            pytest.param(anthropic.RateLimitError, 429, RateLimitError, id="rate-limit-429"),
+            pytest.param(anthropic.InternalServerError, 500, LLMServiceError, id="internal-server-500"),
+            pytest.param(anthropic.OverloadedError, 529, LLMServiceError, id="overloaded-529"),
+        ],
+    )
+    def test_generate_segment_keeps_rate_limit_and_5xx_retryable(
+        self, sdk_error, status_code, expected
+    ):
+        # M1: only permanent 4xx goes terminal — rate limits (429) and 5xx
+        # (500/529) must keep their existing retryable mappings.
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+            request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+            response = httpx.Response(status_code, request=request)
+            mock_client.messages.create = AsyncMock(
+                side_effect=sdk_error("transient", response=response, body=None)
+            )
+
+            import asyncio
+
+            with pytest.raises(expected):
                 asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
 
 

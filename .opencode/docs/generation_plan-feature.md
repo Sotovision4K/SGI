@@ -272,7 +272,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 7. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`. ✅ **DONE** (Phase 3 — async enqueue `202` + status endpoint + `GET /plan` new task fields; `PUT /plan/tasks/{task_id}` deferred to Phase 6)
 8. `main.py` — new-path exception handlers (503/400/429/409). ✅ **DONE** (Phase 3 — 503/400/429 registered; 409 deferred with Phase 6 edit-task conflict)
 9. `handler.py` — `aws:sqs` branch → worker; atomic claim; partial-batch response. ✅ **DONE** (Phase 2 `aws:sqs` branch + partial-batch response; Phase 4 worker delegates to `plan_generation.generate` — retryable → redelivery, terminal → delete.)
-10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ⬜ not started
+10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ⬜ not started — full checklist in the "Phase 5 — handoff & checklist" section (backend M1/M2/M3 fixes + infra A–C).
 11. Frontend — generate loader (hard-stopper on edits during run + block double-click); poll status; in-app completion toast; edit-task view wired to `PUT`. ⬜ not started (synchronous generate only today)
 12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 4** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`; 280 passing). Remaining: edit-task ownership (Phase 6), retry→DLQ e2e (Phase 5).
 
@@ -298,15 +298,13 @@ Context: the spec §0 assumed the synchronous `generate-plan`/`replace_plan` pat
 - **`backend/scripts/migrate_add_task_columns.py`** (new): one-time psycopg3 migration (`ADD COLUMN IF NOT EXISTS …`) for Supabase; follows the `post_signup_trigger.py` dialect-prefix-strip pattern. **Must run against Supabase before deploying Phase 1 code**, or `get_plan` 500s on `UndefinedColumn`.
 - **`backend/.python-version`** (new): pins Python 3.13 — `pydantic-core==2.27.2` has no wheel for 3.14, and building from source fails without the MSVC toolchain.
 
-### Code-review follow-ups (tracked, not blocking)
+### Code-review follow-ups (Phase 1 — resolved)
 
 | # | Severity | Item | Where |
 |---|----------|------|-------|
 | M1 | Medium | Migration script's defensive "skip duplicate column" branch was dead/broken | Fixed in Phase 1 (relied on `ADD COLUMN IF NOT EXISTS`) |
-| M2 | Medium | Tool schema now requires `require_document`, but `anthropic_adapter._build_plan`, the route's `Task(...)` re-listing, and `TaskSchema` all drop the new fields → generated plans persist `require_document=False` | Phases 3 & 5 must wire all three layers |
+| M2 | Medium | Tool schema now requires `require_document`, but the adapter, the route's `Task(...)` re-listing, and `TaskSchema` all dropped the new fields → plans persisted `require_document=False` | Fixed — Phase 3 route layer (`TaskSchema`) + Phase 4 adapter (`_tasks_from_input`) |
 | M3 | Medium | No test coverage for the taxonomy/fields/schema (deferred by design) | Phase 8 (tests) |
-
-**Known gap (M2)**: `routes.py:437-449` re-builds `Task` and manually lists every field — it does **not** pass `source_clause`/`require_document`/`document_title`. Until Phases 3/5 wire these, generated plans persist `""`/`False`/`None` for the new fields.
 
 ### Phase 2 — Plan job infra & ownership-verified claim guard (completed 2026-09-16)
 
@@ -438,9 +436,40 @@ Order: **fix H1/H2 → add process-e2e test → push + one manual smoke test** (
 
 **Implemented (2026-09-17)**: `tests/integration/test_process_e2e.py` (route → capturing queue → `run_plan_generation` with fake LLM + real SQLite repo → `GET /plan`/`GET /plan-generation/status`) and `tests/unit/test_plan_generation_worker.py` (partial-batch-failure contract). `run_plan_generation` gained optional `repo`/`llm` params for test injection (also closes code-review LOW-8).
 
+### Phase 5 — handoff & checklist (next agent)
+
+Phases 0–4 are complete and gated (286 tests, ruff clean; security + code review run, H1/H2 fixed; local process-e2e in place). Phase 5 turns the queue on for real. **Do the backend fixes first, then the Terraform.**
+
+#### A. Backend fixes to clear first (before the queue goes live)
+
+These three medium code-review findings are the ones real SQS/Postgres will surface:
+
+1. **M1 — map permanent 4xx LLM errors to terminal** (`anthropic_adapter.generate_segment`). `BadRequestError`/`AuthenticationError`/`PermissionDeniedError`/`NotFoundError` (all ⊂ `APIStatusError`) are currently mapped to retryable `LLMServiceError`, so a bad API key or over-context prompt is retried 9× (~10 min) instead of failing fast. Catch those subclasses **before** `APIStatusError` and raise a `TerminalError` (e.g. `InvalidResponseError`); keep `RateLimitError` and `InternalServerError` retryable. Add a test for each mapping.
+2. **M2 — reject non-string answer values** (`UpsertFindingsRequest.answers` is `dict[str, Any]`). The length validator only checks `isinstance(value, str)`, so nested dicts/lists bypass the caps and bloat the prompt via `str(answers[qid])`. Type it `dict[str, str]` and reject non-strings (mirror `UpdatePreDiagnosisRequest`).
+3. **M3 — guard `update_job_segments`** (unguarded read-modify-write of the whole `segments` blob). Under lease theft two workers clobber each other's checkpoints and can double-bump `completed_count`. Add `WHERE status='running'` + a `rowcount` check to the `UPDATE`, and document the invariant `max inter-checkpoint gap (~95s) < LEASE_TTL (180s)` next to `_SEGMENT_TIMEOUT_SECONDS`/`_MAX_SEGMENT_ATTEMPTS`.
+
+#### B. Terraform (`infra/`)
+
+No `aws_sqs*` resource exists yet. Add a `queue` module (or extend `backend`) that provisions:
+
+1. **SQS queue** (standard) + **DLQ**, with a redrive policy (`maxReceiveCount` → DLQ).
+2. **Event-source mapping** on `aws_lambda_function.api`:
+   - `FunctionResponseTypes = ["ReportBatchItemFailures"]` — without it the worker's `batchItemFailures` is ignored (security L4).
+   - `batch_size = 1` — the worker processes records sequentially; a multi-record batch exceeds the 120s Lambda timeout (code-review M4).
+   - `maximum_retry_attempts` — the real redelivery cap (replaces the worker's temporary `_MAX_REDELIVERIES=2`).
+3. **Visibility timeout > Lambda timeout** (or raise the function timeout). Keep `LEASE_TTL_SECONDS=180` in the backend ≤ the queue's visibility timeout (strictly less, per code-review H1).
+4. **`PLAN_GENERATION_QUEUE_URL`** env var on the Lambda, set to the queue URL.
+5. **SQS IAM**: `sqs:SendMessage` → the API Lambda's execution role **only** (security H1 / #8); `sqs:ReceiveMessage`/`DeleteMessage`/`GetQueueAttributes` → the Lambda exec role.
+6. **CloudWatch alarm on the DLQ → SNS** (spec §7) so terminal failures page an on-call.
+
+#### C. Acceptance
+
+- `terraform plan` applies cleanly in `infra/environments/dev`.
+- A real enqueue (`POST /generate-plan`) → worker picks it up → plan lands via `GET /plan`; a forced failure lands in the DLQ and triggers the alarm.
+
 ### Verification gates (as of 2026-09-17)
 
 - `ruff check .`: clean.
 - `pytest`: **286 passed** (282 after H1/H2; +4 for the e2e + worker-unit tests).
 
-Status: Phase 0–4 complete; code-review H1 + H2 fixed; local process-e2e test in place. **Next: Phase 5** — Terraform (SQS + DLQ + event-source mapping + `PLAN_GENERATION_QUEUE_URL` + CloudWatch alarm), then push + one manual smoke test on the real stack. The Phase 4 worker now `complete_job`/`fail_job`s, so the event-source mapping can be enabled safely (the Phase 3/4 sequencing guard no longer applies).
+Status: Phase 0–4 complete; code-review H1 + H2 fixed; local process-e2e test in place. **Next: Phase 5** — see the "Phase 5 — handoff & checklist" section (backend M1/M2/M3 fixes first, then Terraform: SQS + DLQ + event-source mapping + `PLAN_GENERATION_QUEUE_URL` + CloudWatch alarm), then push + one manual smoke test on the real stack. The Phase 4 worker now `complete_job`/`fail_job`s, so the event-source mapping can be enabled safely (the Phase 3/4 sequencing guard no longer applies).

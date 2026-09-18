@@ -17,6 +17,8 @@ Retry ladder (spec §7, decision 19):
   ``requeue_job`` + raise ``RetryableError`` → SQS redelivers → resume only the
   failed segments (checkpoint)
 - terminal errors (and the cap) → merge completed segments and persist partial
+- lease lost mid-run (M3) → abandon: no fail/complete/requeue/persist; the SQS
+  message is ACKed so the thief's run is the only one left standing
 """
 
 from __future__ import annotations
@@ -38,7 +40,7 @@ from src.adapters.llm.llm_port import LLMPort, SegmentResult
 from src.domain.entities.audit_log import AuditLogLLM, AuditLogStatus
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
-from src.errors import JobErrorCode, RetryableError, TerminalError
+from src.errors import JobErrorCode, LeaseLostError, RetryableError, TerminalError
 from src.services.prompt_builder import (
     build_bucket_prompt,
     build_certification_goal,
@@ -57,6 +59,11 @@ _MAX_SEGMENT_ATTEMPTS = 3  # tenacity retries per segment (in-process)
 _SEGMENT_MAX_TOKENS = 1500
 _SEGMENT_TIMEOUT_SECONDS = 30.0
 _MAX_REDELIVERIES = 2  # whole-job SQS redeliveries before terminal (Phase 4 cap)
+
+# INVARIANT: worst-case inter-checkpoint gap ≈ _SEGMENT_TIMEOUT_SECONDS(30) ×
+# _MAX_SEGMENT_ATTEMPTS(3) + backoff ≈ 95s < LEASE_TTL_SECONDS(180) in
+# process_repository. If you raise either constant or the token budget, raise
+# LEASE_TTL_SECONDS and the SQS visibility timeout to match.
 
 
 @retry(
@@ -128,6 +135,15 @@ async def generate(
 
     try:
         await _generate(process_id, job, repo, llm, model)
+    except LeaseLostError:
+        # Lease theft mid-run (M3): another worker reclaimed the job, so this
+        # run is redundant. Abandon — do NOT fail, complete, requeue, or
+        # persist; the thief owns the job now. Returning normally ACKs this
+        # (stale) SQS message so it is not redelivered yet again.
+        logger.warning(
+            "Lease lost mid-run — abandoning | process=%s", process_id
+        )
+        return
     except RetryableError:
         # Whole-job redelivery: release the lease so the redelivered message
         # re-claims through the normal `queued` path and re-runs only the
@@ -212,6 +228,11 @@ async def _generate(
 
         outcomes: dict[str, str] = {}
         for bucket, result in zip(pending, results):
+            if isinstance(result, LeaseLostError):
+                # Lease theft mid-run (M3): propagate so generate() abandons
+                # without failing or completing the job — never classify it
+                # as a terminal segment failure.
+                raise result
             if isinstance(result, BaseException):
                 logger.error(
                     "Segment %s crashed unexpectedly | process=%s | err=%s",

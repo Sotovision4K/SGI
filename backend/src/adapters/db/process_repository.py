@@ -11,7 +11,7 @@ from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.domain.entities.audit_log import AuditLogLLM
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
-from src.errors import JobErrorCode
+from src.errors import JobErrorCode, LeaseLostError
 from src.adapters.db.user_repository import CompanyTable, get_engine
 
 logger = logging.getLogger(__name__)
@@ -585,16 +585,51 @@ class ProcessRepository:
             return (row.name or "") if row else ""
 
     async def update_job_segments(self, process_id: uuid.UUID, segments: dict) -> None:
-        """Persist the per-bucket checkpoint (resumable retry)."""
+        """Persist the per-bucket checkpoint (resumable retry), guarded by the lease.
+
+        # Q: Why a conditional UPDATE instead of get → mutate → commit?
+        # A: The old read-modify-write of the whole `segments` blob was
+        #    non-atomic (M3). Under lease theft (SQS redelivery putting two
+        #    workers on one job) the stale worker clobbered the new worker's
+        #    checkpoint — and a later complete_job from the stale worker could
+        #    double-bump `completed_count`. A single UPDATE guarded by
+        #    `status='running'` (mirroring `complete_job`) makes every
+        #    checkpoint a lease assertion: the write only lands while this
+        #    worker still owns the lease.
+        # Q: What does rowcount != 1 mean?
+        # A: The job is no longer `running` (completed/queued/failed/missing) —
+        #    this worker lost the lease. Raise LeaseLostError so the caller
+        #    abandons without failing or completing the job. This also replaces
+        #    the old "row not found" ValueError: a missing row fails the same
+        #    lease assertion.
+        # Q: Why bump `updated_at` on every checkpoint?
+        # A: It doubles as the heartbeat (lease keepalive) — `claim_job` only
+        #    reclaims a `running` job whose heartbeat is older than
+        #    LEASE_TTL_SECONDS (see above).
+        # INVARIANT: worst-case inter-checkpoint gap ≈ _SEGMENT_TIMEOUT_SECONDS(30)
+        #    × _MAX_SEGMENT_ATTEMPTS(3) + backoff ≈ 95s < LEASE_TTL_SECONDS(180)
+        #    above. If you raise either constant or the token budget, raise
+        #    LEASE_TTL_SECONDS and the SQS visibility timeout to match.
+        """
         from datetime import datetime, timezone
 
         async with AsyncSession(self._engine) as session:
-            row = await session.get(PlanJobTable, process_id)
-            if row is None:
-                raise ValueError("Plan job not found")
-            row.segments = json.dumps(segments, ensure_ascii=False)
-            row.updated_at = datetime.now(timezone.utc).isoformat()
+            result = await session.execute(
+                update(PlanJobTable)
+                .where(
+                    PlanJobTable.process_id == process_id,
+                    PlanJobTable.status == PlanJobStatus.RUNNING.value,
+                )
+                .values(
+                    segments=json.dumps(segments, ensure_ascii=False),
+                    updated_at=datetime.now(timezone.utc).isoformat(),
+                )
+            )
             await session.commit()
+            if result.rowcount != 1:
+                raise LeaseLostError(
+                    f"checkpoint rejected — plan job {process_id} is no longer running"
+                )
 
     async def complete_job(self, process_id: uuid.UUID) -> None:
         """Mark `running → completed` and atomically bump `completed_count`.

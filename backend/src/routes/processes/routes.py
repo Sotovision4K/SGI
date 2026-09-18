@@ -80,20 +80,27 @@ class ProcessDetailResponse(BaseModel):
     pre_diagnosis: dict[str, Any] = Field(default_factory=dict)
 
 
+# Shared answer-shape rules (findings + pre-diagnosis): each answer value is
+# plain text capped at _MAX_ANSWER_LENGTH chars. Bounded at the boundary so an
+# oversized or structured submission can't bloat the snapshot and then every
+# bucket prompt across retries/redeliveries (security audit H1 + code-review M2).
+_VALID_ANSWER_KEY = re.compile(r"^[a-z][a-z0-9_]{0,99}$")
+_MAX_ANSWER_LENGTH = 2000
+
+
 class UpsertFindingsRequest(BaseModel):
-    # Length caps (security audit H1): free_text and each answer value are
-    # bounded at the boundary so an oversized submission can't bloat the
-    # snapshot and then every bucket prompt across retries/redeliveries.
-    answers: dict[str, Any] = Field(default_factory=dict)
+    answers: dict[str, str] = Field(default_factory=dict)
     free_text: str = Field(default="", max_length=5000)
 
     @field_validator("answers")
     @classmethod
-    def validate_answer_lengths(cls, v: dict[str, Any]) -> dict[str, Any]:
+    def validate_answer_lengths(cls, v: dict[str, str]) -> dict[str, str]:
         for key, value in v.items():
-            if isinstance(value, str) and len(value) > 2000:
+            if not isinstance(value, str):
+                raise ValueError(f"El valor de '{key}' debe ser texto")
+            if len(value) > _MAX_ANSWER_LENGTH:
                 raise ValueError(
-                    f"El valor de '{key}' excede el límite de 2000 caracteres"
+                    f"El valor de '{key}' excede el límite de {_MAX_ANSWER_LENGTH} caracteres"
                 )
         return v
 
@@ -195,8 +202,6 @@ async def _require_process_owner(
 
 # ---- Pre-diagnosis schemas -----------------------------------------------
 
-_VALID_ANSWER_KEY = re.compile(r"^[a-z][a-z0-9_]{0,99}$")
-_MAX_ANSWER_LENGTH = 2000
 
 class UpdatePreDiagnosisRequest(BaseModel):
     answers: dict[str, str] = Field(

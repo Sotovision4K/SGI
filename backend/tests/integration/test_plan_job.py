@@ -17,7 +17,7 @@ from sqlmodel import SQLModel
 
 from src.adapters.db.process_repository import ProcessRepository, PlanJobTable
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus, make_default_segments
-from src.errors import JobErrorCode
+from src.errors import JobErrorCode, LeaseLostError
 
 
 @pytest.fixture
@@ -230,6 +230,82 @@ class TestPlanJobTransitions:
 
         loaded = await repo.get_plan_job(job.process_id)
         assert loaded.status == PlanJobStatus.COMPLETED
+
+
+class TestUpdateSegmentsLeaseGuard:
+    """M3 (Phase 5 §13.A.3): the checkpoint is a lease assertion.
+
+    `update_job_segments` must only land on a `running` job this worker still
+    holds; any other state means the lease was lost/stolen and the checkpoint
+    must be rejected without touching the `segments` blob.
+    """
+
+    @pytest.mark.asyncio
+    async def test_update_segments_on_running_job_persists_and_bumps_heartbeat(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)  # queued -> running
+
+        # Age the heartbeat back so the bump is unambiguous.
+        stale = (datetime.now(timezone.utc) - timedelta(seconds=120)).isoformat()
+        async with AsyncSession(repo._engine) as session:
+            row = await session.get(PlanJobTable, job.process_id)
+            row.updated_at = stale
+            await session.commit()
+
+        segments = make_default_segments()
+        segments["B1"] = {"status": "completed", "tasks": [], "summary": "ok", "error": None}
+        await repo.update_job_segments(job.process_id, segments)
+
+        loaded = await repo.get_plan_job(job.process_id)
+        assert loaded.segments["B1"]["status"] == "completed"
+        assert loaded.segments["B2"]["status"] == "pending"
+        # The heartbeat (lease keepalive) moved forward from the aged value.
+        assert loaded.updated_at > datetime.fromisoformat(stale)
+
+    @pytest.mark.asyncio
+    async def test_update_segments_on_completed_job_raises_lease_lost(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)
+        before = await repo.get_plan_job(job.process_id)
+        await repo.complete_job(job.process_id)  # another worker finished it
+
+        segments = make_default_segments()
+        segments["B1"] = {"status": "completed", "tasks": [], "summary": "stolen", "error": None}
+
+        with pytest.raises(LeaseLostError):
+            await repo.update_job_segments(job.process_id, segments)
+
+        # The stale worker's write must NOT clobber the blob.
+        loaded = await repo.get_plan_job(job.process_id)
+        assert loaded.status == PlanJobStatus.COMPLETED
+        assert loaded.segments == before.segments
+
+    @pytest.mark.asyncio
+    async def test_update_segments_on_queued_job_raises_lease_lost(self, repo):
+        job = _make_job()
+        await repo.create_plan_job(job)
+        await repo.claim_job(job.process_id, job.consultant_id)
+        before = await repo.get_plan_job(job.process_id)
+        await repo.requeue_job(job.process_id)  # lease released back to queued
+
+        segments = make_default_segments()
+        segments["B1"] = {"status": "completed", "tasks": [], "summary": "stolen", "error": None}
+
+        with pytest.raises(LeaseLostError):
+            await repo.update_job_segments(job.process_id, segments)
+
+        loaded = await repo.get_plan_job(job.process_id)
+        assert loaded.status == PlanJobStatus.QUEUED
+        assert loaded.segments == before.segments
+
+    @pytest.mark.asyncio
+    async def test_update_segments_on_missing_job_raises_lease_lost(self, repo):
+        # The old ValueError("Plan job not found") is replaced: a missing row
+        # fails the same lease assertion (rowcount 0).
+        with pytest.raises(LeaseLostError):
+            await repo.update_job_segments(uuid.uuid4(), make_default_segments())
 
 
 class TestPlanJobLookups:

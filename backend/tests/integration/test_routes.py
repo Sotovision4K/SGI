@@ -384,6 +384,113 @@ class TestFindingsRoutes:
         # 422 is acceptable if the patch path is wrong (validation layer fires first)
         assert r.status_code in (404, 422)
 
+    def _owned_process(self, mock_current_user):
+        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
+
+        return Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.UUID(mock_current_user["sub"]),
+            company_id=uuid.uuid4(),
+            iso_standard=IsoStandard.ISO_9001,
+            status=ProcessStatus.IN_DIAGNOSIS,
+        )
+
+    def _put_findings(self, client, fastapi_app, mock_repo, process_id, payload):
+        """PUT findings with the repo swapped in via dependency_overrides."""
+        from src.routes.processes.routes import get_process_repository
+
+        old_repo = fastapi_app.dependency_overrides.get(get_process_repository)
+        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
+        try:
+            return client.put(f"/processes/{process_id}/findings", json=payload)
+        finally:
+            if old_repo is not None:
+                fastapi_app.dependency_overrides[get_process_repository] = old_repo
+            else:
+                fastapi_app.dependency_overrides.pop(get_process_repository, None)
+
+    def test_upsert_findings_rejects_nested_dict_answers(self, client, mock_current_user):
+        """Code-review M2: a nested dict answer must be rejected (422).
+
+        Non-string values previously bypassed the 2000-char cap (the old
+        validator only checked `isinstance(value, str)`) and were later
+        coerced via `str(answers[qid])`, bloating the LLM prompt.
+        """
+        from src.main import app as fastapi_app
+
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.upsert_finding = AsyncMock()
+
+        r = self._put_findings(
+            client, fastapi_app, mock_repo, process.id,
+            {"answers": {"q1": {"nested": "dict"}}},
+        )
+        assert r.status_code == 422, \
+            f"Nested dict answer must be rejected, got {r.status_code}: {r.text[:200]}"
+        mock_repo.upsert_finding.assert_not_called()
+
+    def test_upsert_findings_rejects_list_answers(self, client, mock_current_user):
+        """Code-review M2: a list answer must be rejected (422)."""
+        from src.main import app as fastapi_app
+
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.upsert_finding = AsyncMock()
+
+        r = self._put_findings(
+            client, fastapi_app, mock_repo, process.id,
+            {"answers": {"q1": ["a", "b"]}},
+        )
+        assert r.status_code == 422, \
+            f"List answer must be rejected, got {r.status_code}: {r.text[:200]}"
+        mock_repo.upsert_finding.assert_not_called()
+
+    def test_upsert_findings_rejects_answer_over_2000_chars(self, client, mock_current_user):
+        """The 2000-char cap still holds via the typed `dict[str, str]` path."""
+        from src.main import app as fastapi_app
+
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.upsert_finding = AsyncMock()
+
+        r = self._put_findings(
+            client, fastapi_app, mock_repo, process.id,
+            {"answers": {"q1": "x" * 2001}},
+        )
+        assert r.status_code == 422, \
+            f"Oversized answer must be rejected, got {r.status_code}: {r.text[:200]}"
+        mock_repo.upsert_finding.assert_not_called()
+
+    def test_upsert_findings_with_string_answers_succeeds(self, client, mock_current_user):
+        """Happy path: string answers are persisted and returned unchanged."""
+        from src.domain.entities.finding import Finding
+        from src.main import app as fastapi_app
+
+        process = self._owned_process(mock_current_user)
+        answers = {"q_main_processes": "sí", "q_documented_info": "no aplica"}
+        saved = Finding(process_id=process.id, answers=answers, free_text="notas")
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.upsert_finding = AsyncMock(return_value=saved)
+
+        r = self._put_findings(
+            client, fastapi_app, mock_repo, process.id,
+            {"answers": answers, "free_text": "notas"},
+        )
+        assert r.status_code == 200, \
+            f"String answers must be accepted, got {r.status_code}: {r.text[:200]}"
+        body = r.json()
+        assert body["answers"] == answers
+        assert body["free_text"] == "notas"
+        persisted = mock_repo.upsert_finding.call_args.args[0]
+        assert persisted.answers == answers
+        assert persisted.free_text == "notas"
+
 
 # ---- Generate Plan ---------------------------------------------------------
 

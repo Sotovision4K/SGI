@@ -10,8 +10,9 @@ The taxonomy splits failures into two fundamental categories:
   retry.
 
 A few domain-specific failures (segment generation, queue enqueue, audit-log
-write, and generation-limit) extend the base directly because they are handled
-by dedicated code paths rather than the generic retry/terminal policy.
+write, generation-limit, and lease-loss) extend the base directly because they
+are handled by dedicated code paths rather than the generic retry/terminal
+policy.
 """
 
 from enum import Enum
@@ -35,7 +36,7 @@ class RateLimitError(RetryableError):
 
 
 class LLMServiceError(RetryableError):
-    """The LLM provider returned an unexpected 5xx/4xx service error."""
+    """The LLM provider returned an unexpected service error (e.g. 5xx)."""
 
 
 class LLMTimeoutError(RetryableError):
@@ -66,6 +67,11 @@ class MissingFindingsError(TerminalError):
     """No findings are available to drive plan generation."""
 
 
+class LLMRequestRejectedError(TerminalError):
+    """The LLM provider permanently rejected the request (HTTP 4xx — bad
+    request, auth, permission, not found). Retrying cannot succeed."""
+
+
 class SegmentGenerationError(PlanGenerationError):
     """A single segment of the plan failed to generate."""
 
@@ -80,6 +86,12 @@ class AuditLogWriteError(PlanGenerationError):
 
 class GenerationLimitError(PlanGenerationError):
     """A generation limit was exceeded."""
+
+
+class LeaseLostError(PlanGenerationError):
+    """The worker lost the lease on a plan job mid-run (another worker
+    reclaimed it). The caller must abandon without failing or completing
+    the job."""
 
 
 class JobErrorCode(str, Enum):
