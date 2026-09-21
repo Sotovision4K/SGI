@@ -273,7 +273,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 8. `main.py` — new-path exception handlers (503/400/429/409). ✅ **DONE** (Phase 3 — 503/400/429 registered; 409 deferred with Phase 6 edit-task conflict)
 9. `handler.py` — `aws:sqs` branch → worker; atomic claim; partial-batch response. ✅ **DONE** (Phase 2 `aws:sqs` branch + partial-batch response; Phase 4 worker delegates to `plan_generation.generate` — retryable → redelivery, terminal → delete.)
 10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ✅ **DONE** (Phase 5 Stage B — `infra/modules/backend/`: SQS queue + DLQ + redrive, queue resource policy, `lambda_sqs` IAM, event-source mapping [disabled by default → go-live switch], SNS topic + email sub, CloudWatch DLQ alarm; `terraform validate` clean.)
-11. Frontend — generate loader (hard-stopper on edits during run + block double-click); poll status; in-app completion toast; edit-task view wired to `PUT`. ⬜ not started (synchronous generate only today)
+11. Frontend — generate loader (hard-stopper on edits during run + block double-click); poll status; in-app completion toast; edit-task view wired to `PUT`. ✅ **DONE** (Phase 7 — branch `phase7/async-plan-generation`: async enqueue + 3s status polling, per-segment progress view, partial-plan banner + warn toast, `isLocked` edit guard, `PUT` already wired from Phase 6)
 12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 6** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`) + Phase 5 Stage A (`test_anthropic_adapter.py` 4xx→terminal mapping, `test_routes.py` non-string answer rejection, `test_plan_job.py` lease-guarded checkpoint) + Tier-1 failure-path (`TestRetryLadder`: retryable-recovers-on-redelivery, retryable-exhausts-cap-and-fails, retryable-cap-yields-partial-plan, completed-job-skipped-on-duplicate-redelivery) + Phase 6 (15 backend tests: `test_patch_task.py` 8 repo tests, `test_update_task_routes.py` 7 route tests; 11 frontend tests: `PlanResultView` inline edit + `useUpdateTask` hook). Remaining: real-stack enqueue smoke (Phase 5 Stage C), real-stack retry→DLQ smoke (Phase 5 Stage C).
 
 ---
@@ -511,11 +511,37 @@ The go-live smoke test (2026-09-21) surfaced a **pre-existing production bug** t
 1. Enqueue smoke: `POST /processes/{id}/generate-plan` → 202 → worker processes → `GET /plan` returns plan.
 2. Retry→DLQ smoke: poison message → redrive → DLQ → CloudWatch alarm → SNS email.
 
-### Verification gates (as of 2026-09-21 after Phase 6)
+### Phase 7 — frontend async loader (completed 2026-09-21)
+
+Replaced the synchronous `POST → await Plan` flow with the async enqueue → poll → render pipeline. Decisions locked: **Option A** (polling in the wizard parent, not in `StepFindings`), **"Reintentar" deferred to Phase 8**, **partial plan shown** when some segments fail (decision #3).
+
+- **`api/plan.ts`**: `enqueuePlanGeneration()` (POST → `202 {job_id, status:'queued'}`), `getPlanGenerationStatus()` (GET status), new `PlanGenerationEnqueueResponse` + `PlanJobStatus` types; `generatePlan` kept as a deprecated alias.
+- **`hooks/useEnqueuePlanGeneration.ts`** (new): enqueue mutation with error toast.
+- **`hooks/usePlanGenerationStatus.ts`** (new): 3s polling via `refetchInterval`, stops on `completed`/`failed`, no-retry on 404; pure `planStatusRefetchInterval()` helper for unit testing.
+- **`hooks/usePlan.ts`**: `useGeneratePlan` → `useEnqueuePlan` (same shape, for the Phase 8 retry button).
+- **`StepFindings.tsx`**: `onEnqueued(jobId)` prop; saves findings then enqueues (double-click guarded by `isPending`); sync spinner removed.
+- **`NewProcessWizardPage.tsx`**: `enqueuedJobId` + `planIsPartial` state; step 3 renders `PlanGenerationStatusView` while a job is queued/running; `handlePlanReady`/`handlePlanPartial`/`handlePlanFailed` handlers (success toast / warn toast + `isPartial` / danger toast).
+- **`components/plan/PlanGenerationStatusView.tsx`** (new): per-segment (B1/B2/B3) progress with icons, resolves to plan on `completed`, partial on `failed`-with-tasks, error on `failed`-with-no-tasks.
+- **`PlanResultView.tsx`**: `isLocked` (hides edit buttons + banner) and `isPartial` (persistent warning banner) props.
+- **Tests**: 6 files / 44 tests — `usePlanGenerationStatus`, `useEnqueuePlanGeneration`, `StepFindings` (async enqueue contract), `NewProcessWizardPage` (orchestration: enqueue→status→complete/partial/fail + sync fallback), `PlanGenerationStatusView`, `PlanResultView` (isLocked/isPartial).
+
+### Stage C smoke test #1 — run & bugs fixed (2026-09-21)
+
+Ran the real-stack enqueue smoke (`POST /generate-plan` → 202 → poll status → `GET /plan`) against `dev` (process `20593fc7…`, iso9001). **Auth note:** the Cognito web client is **OIDC-only** (`AllowedOAuthFlows=['code']`; no `USER_PASSWORD_AUTH` / `ADMIN_USER_PASSWORD_AUTH`), so `initiate-auth`/`admin-initiate-auth` are disabled — but the repo-root `.env` already carries `COGNITO_REFRESH_TOKEN` (+ `SGI_ACCESS_TOKEN`), so auth is a plain `REFRESH_TOKEN_AUTH` refresh. No hosted-UI login needed.
+
+Three bugs surfaced and were fixed:
+
+1. **🟢 Schema drift — `plans.updated_at`/`revision` missing.** `replace_plan` failed with `UndefinedColumnError: column plans.updated_at does not exist` (and `GET /plan` → 500). Phase 6 added the columns to `PlanTable` but `backend/scripts/migrate_add_plan_columns.py` was never run. **Fixed** by running it against Supabase.
+2. **🔴 Empty tasks — `_SEGMENT_MAX_TOKENS=1500` too low.** Every segment returned `tasks:[]` with a verbose `summary_md`; all 9 audit rows showed `output_tokens: 1500` (exactly the cap) — the LLM exhausted the budget on the summary. **Fixed** by raising `_SEGMENT_MAX_TOKENS` → `4096` (the legacy single-call bound) + `_SEGMENT_TIMEOUT_SECONDS` 30→180. **Stopgap — needs review** (see `technical_debt.md`).
+3. **🔴 Lambda 120s timeout → redelivery loop.** Worker hit `Status: timeout` at 120,000 ms (segment latency was 25–88 s), the message redelivered, and the job re-ran 3× before completing. **Fixed** by raising Lambda timeout → `600s`, `LEASE_TTL_SECONDS` 180→300, and SQS visibility timeout 300→900.
+
+**New tool** `.opencode/tools/plan-generation-smoke.ts` — end-to-end smoke (auth → enqueue → poll → fetch/validate → diagnostics) that loads the repo-root `.env`; flags `empty-tasks` / `stuck-running` / `job-failed`.
+
+### Verification gates (as of 2026-09-21 after Stage C fixes)
 
 - `ruff check .`: clean.
-- `pytest`: **325 passed** (15 new Phase 6 tests).
-- `pnpm --dir frontend lint`: clean.
-- `pnpm --dir frontend build`: clean.
+- `pytest` (affected): **52 passed** (`test_anthropic_adapter`, `test_plan_generation`, `test_process_e2e`).
+- `terraform validate` (`infra/environments/dev`): clean.
+- `pnpm --dir frontend lint` / `build`: clean (Phase 7, unchanged).
 
-Status: Phase 0–6 complete. **Asyncio bug fixed and deployed** (`543d1bc`). **Stage C unblocked** — two real-stack smoke tests remain: (1) enqueue → plan via `GET /plan`; (2) poison message → DLQ → CloudWatch alarm → SNS email. **Frontend async loader still pending** (Phase 7 item 11 — hard-stop edits during run, poll status, completion toast, `PUT` wired to inline edit).
+Status: Phase 0–7 complete + **Stage C smoke #1 run** (3 bugs found, all fixed in code). **Remaining to call the feature done:** (1) deploy the fixes — `terraform apply` (Lambda timeout 120→600, visibility 300→900) + backend code push, (2) re-run smoke #1 to confirm non-empty tasks, (3) run smoke #2 (poison message → DLQ → CloudWatch alarm → SNS email). **"Reintentar" (manual retry) deferred to Phase 8**; **Slack notification deferred**; **segment `max_tokens=4096` is a stopgap pending latency-budget review** (see `technical_debt.md`).

@@ -58,7 +58,7 @@ class FakeLLM:
         self.calls: list[str] = []
 
     async def generate_segment(
-        self, system_prompt, user_prompt, *, max_tokens=1500, timeout_seconds=30.0
+        self, system_prompt, user_prompt, *, max_tokens=4096, timeout_seconds=180.0
     ):
         self.calls.append(user_prompt)
         bucket = _bucket_from_prompt(user_prompt)

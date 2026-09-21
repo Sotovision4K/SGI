@@ -56,14 +56,20 @@ logger = logging.getLogger(__name__)
 _SEGMENT_BUCKETS = ("B1", "B2", "B3")
 _SEGMENT_CONCURRENCY = 3
 _MAX_SEGMENT_ATTEMPTS = 3  # tenacity retries per segment (in-process)
-_SEGMENT_MAX_TOKENS = 1500
-_SEGMENT_TIMEOUT_SECONDS = 30.0
+_SEGMENT_MAX_TOKENS = 4096
+_SEGMENT_TIMEOUT_SECONDS = 180.0
 _MAX_REDELIVERIES = 2  # whole-job SQS redeliveries before terminal (Phase 4 cap)
 
-# INVARIANT: worst-case inter-checkpoint gap ≈ _SEGMENT_TIMEOUT_SECONDS(30) ×
-# _MAX_SEGMENT_ATTEMPTS(3) + backoff ≈ 95s < LEASE_TTL_SECONDS(180) in
-# process_repository. If you raise either constant or the token budget, raise
-# LEASE_TTL_SECONDS and the SQS visibility timeout to match.
+# Latency budget — STOPGAP (needs review, see technical_debt.md):
+# _SEGMENT_MAX_TOKENS was 1500 and produced EMPTY task lists (Stage-C smoke,
+# 2026-09-21) — the LLM spent the whole budget on the summary and returned
+# tasks=[]. Raised to 4096 (the legacy single-call bound) with
+# _SEGMENT_TIMEOUT_SECONDS 30→180 (a 4096-token call is ~80-120s) and
+# LEASE_TTL_SECONDS 180→300 (process_repository.py) to match. The happy path
+# (all segments succeed first-try) stays inside the lease; the pathological
+# all-timeout path does not and is tracked as tech debt. If you change any of
+# these, re-check LEASE_TTL_SECONDS, the Lambda timeout and the SQS visibility
+# timeout together.
 
 
 @retry(

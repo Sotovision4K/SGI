@@ -114,7 +114,7 @@ resource "aws_sqs_queue" "plan_generation_dlq" {
 
 resource "aws_sqs_queue" "plan_generation" {
   name                       = "${var.project_name}-${var.environment}-plan-generation"
-  visibility_timeout_seconds = var.plan_generation_visibility_timeout # 300s — > Lambda timeout (120s) and > LEASE_TTL (180s)
+  visibility_timeout_seconds = var.plan_generation_visibility_timeout # 900s — > Lambda timeout (600s) and > LEASE_TTL (300s)
   message_retention_seconds  = 259200                                 # 3 days
 
   redrive_policy = jsonencode({
@@ -182,8 +182,8 @@ resource "aws_lambda_event_source_mapping" "plan_generation" {
 
   lifecycle {
     precondition {
-      condition     = var.plan_generation_visibility_timeout > var.timeout && var.plan_generation_visibility_timeout > 180
-      error_message = "plan_generation_visibility_timeout must be strictly greater than both the Lambda timeout and LEASE_TTL_SECONDS (180)."
+      condition     = var.plan_generation_visibility_timeout > var.timeout && var.plan_generation_visibility_timeout > 300
+      error_message = "plan_generation_visibility_timeout must be strictly greater than both the Lambda timeout and LEASE_TTL_SECONDS (300)."
     }
   }
 }

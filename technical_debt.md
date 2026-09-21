@@ -147,3 +147,42 @@ Source spec: `.opencode/docs/generation_plan-feature.md`.
   `completed_count` + job status), rather than relying on the in-memory
   `rate_limit.py`. Consider a DB-backed or queue-visibility-backed guard for the
   worker if direct queue writes become a threat vector.
+
+---
+
+# Stage-C smoke findings (2026-09-21)
+
+These are not from the security audit — they came from running the real-stack smoke test
+(`.opencode/docs/generation_plan-feature.md` §"Stage C smoke test #1"). They are tracked
+here because the fix we shipped is a **stopgap**, not a final design.
+
+## TD-1 — Segment latency budget is a rough stopgap (`max_tokens` 1500 → 4096)
+
+- **Source:** Stage C smoke test — `backend/src/services/plan_generation.py`
+  (`_SEGMENT_MAX_TOKENS`, `_SEGMENT_TIMEOUT_SECONDS`), `backend/src/adapters/db/process_repository.py`
+  (`LEASE_TTL_SECONDS`), `backend/src/adapters/llm/{llm_port,anthropic_adapter}.py` (defaults),
+  `infra/modules/backend/{variables,main}.tf` (Lambda timeout + visibility timeout).
+- **Why it's debt:** the smoke test found the segmented plan came back with **empty task
+  lists** — `_SEGMENT_MAX_TOKENS=1500` was too small for a 3–5 paragraph summary **plus**
+  8–20 tasks (every audit row hit `output_tokens == 1500`). As a stopgap we raised
+  `_SEGMENT_MAX_TOKENS` 1500→**4096** (the legacy single-call bound), and bumped the
+  companions to keep the pipeline coherent: `_SEGMENT_TIMEOUT_SECONDS` 30→180,
+  `LEASE_TTL_SECONDS` 180→300, Lambda timeout 120→600, SQS visibility 300→900.
+- **Why it needs further review (not a final fix):**
+  1. **The token budget is arbitrary.** 4096 is "the legacy value", not a measured
+     requirement. The right fix is to *right-size* the budget against the actual output —
+     tighten the prompt to cap summary verbosity + task count (or split summary/tasks into
+     two calls) — rather than throw tokens at it.
+  2. **No latency model.** The timeout/lease/visibility/Lambda-timeout values are tuned to
+     the happy path (all segments succeed first-try, ~80–120 s each). The pathological path
+     (a segment hitting `_SEGMENT_TIMEOUT_SECONDS` × 3 tenacity attempts ≈ 547 s) still
+     exceeds `LEASE_TTL_SECONDS=300` and approaches the 600 s Lambda timeout, so a
+     slow-but-not-dead model can still trigger lease expiry / redelivery / wasted tokens.
+  3. **`_SEGMENT_TIMEOUT_SECONDS` enforcement is unverified.** Observed single-call latency
+     reached 88 s while the timeout was 30 s (likely the Anthropic SDK's internal retries
+     extend the effective window), so the timeout→retry interaction needs confirmation.
+- **Acceptance for a real fix:** derive the token budget from the output requirements; model
+  worst-case latency (per-call + tenacity + SDK retries) and set
+  `_SEGMENT_TIMEOUT_SECONDS` < `LEASE_TTL_SECONDS` < Lambda timeout < visibility timeout
+  with real margin; add a guard/test that a persisted plan with **zero tasks** cannot happen
+  (e.g. a post-merge "no tasks" check or a prompt-level assertion).

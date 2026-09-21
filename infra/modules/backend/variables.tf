@@ -18,7 +18,7 @@ variable "memory_size" {
 variable "timeout" {
   description = "Lambda timeout in seconds"
   type        = number
-  default     = 120
+  default     = 600
 }
 
 variable "runtime" {
@@ -103,7 +103,7 @@ variable "plan_generation_mapping_enabled" {
 variable "plan_generation_visibility_timeout" {
   description = "SQS visibility timeout for the plan generation queue (seconds)"
   type        = number
-  default     = 300
+  default     = 900
 }
 
 variable "plan_generation_max_receive_count" {

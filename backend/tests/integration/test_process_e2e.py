@@ -25,7 +25,7 @@ class _FakeLLM:
     """Returns one distinguishable task per bucket (title carries the bucket)."""
 
     async def generate_segment(
-        self, system_prompt, user_prompt, *, max_tokens=1500, timeout_seconds=30.0
+        self, system_prompt, user_prompt, *, max_tokens=4096, timeout_seconds=180.0
     ):
         # Derive the bucket name from the user prompt ("Bloque de diagnóstico: <name>").
         import re

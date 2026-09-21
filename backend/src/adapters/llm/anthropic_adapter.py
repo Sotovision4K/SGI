@@ -115,8 +115,8 @@ class AnthropicAdapter:
         system_prompt: str,
         user_prompt: str,
         *,
-        max_tokens: int = 1500,
-        timeout_seconds: float = 30.0,
+        max_tokens: int = 4096,
+        timeout_seconds: float = 180.0,
     ) -> SegmentResult:
         """Generate a single plan segment (bucket) via tool-use.
 

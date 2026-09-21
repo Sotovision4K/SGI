@@ -320,8 +320,9 @@ class TestGenerateSegment:
             assert result.output_tokens == 50
             assert result.latency_ms >= 0
 
-            # max_tokens default is the per-segment bound, not the old 4096.
-            assert mock_client.messages.create.call_args.kwargs["max_tokens"] == 1500
+            # max_tokens default is the per-segment bound (raised to 4096 after
+            # the Stage-C smoke found empty tasks at 1500).
+            assert mock_client.messages.create.call_args.kwargs["max_tokens"] == 4096
 
     def test_generate_segment_tool_not_emitted_is_retryable(self):
         with patch("anthropic.AsyncAnthropic") as mock_cls:

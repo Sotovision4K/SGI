@@ -18,9 +18,10 @@ logger = logging.getLogger(__name__)
 
 # Stale-lease recovery (spec §7 / decision 19): a `running` job whose lease has
 # expired (no heartbeat for this long) is reclaimable on SQS redelivery. The
-# value is aligned with the queue's visibility timeout so that a message can
-# only be redelivered after a crashed attempt has already gone stale.
-LEASE_TTL_SECONDS = 180
+# value must exceed the per-segment worst case; raised 180→300 to match
+# _SEGMENT_TIMEOUT_SECONDS=180 in plan_generation.py (Stage-C smoke fix — the
+# whole budget needs a proper latency model, see technical_debt.md).
+LEASE_TTL_SECONDS = 300
 
 
 class ProcessTable(SQLModel, table=True):
