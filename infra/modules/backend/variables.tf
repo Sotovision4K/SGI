@@ -93,3 +93,27 @@ variable "email_enabled" {
   type        = bool
   default     = false
 }
+
+variable "plan_generation_mapping_enabled" {
+  description = "Enable the SQS event-source mapping for the plan generation worker (go-live switch)"
+  type        = bool
+  default     = false
+}
+
+variable "plan_generation_visibility_timeout" {
+  description = "SQS visibility timeout for the plan generation queue (seconds)"
+  type        = number
+  default     = 300
+}
+
+variable "plan_generation_max_receive_count" {
+  description = "Max SQS deliveries before redrive to DLQ"
+  type        = number
+  default     = 4
+}
+
+variable "alert_email" {
+  description = "Email address for DLQ alarm notifications"
+  type        = string
+  default     = ""
+}

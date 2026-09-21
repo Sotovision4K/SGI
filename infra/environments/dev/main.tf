@@ -71,13 +71,13 @@ module "cognito" {
   callback_urls = concat([
     "http://localhost:5173/auth/signin",
     "http://localhost:5173/",
-  ], module.frontend.cloudfront_domain != "" ? [
+    ], module.frontend.cloudfront_domain != "" ? [
     "https://${module.frontend.cloudfront_domain}/auth/signin",
     "https://${module.frontend.cloudfront_domain}/",
   ] : [])
   logout_urls = concat([
     "http://localhost:5173/auth/signin",
-  ], module.frontend.cloudfront_domain != "" ? [
+    ], module.frontend.cloudfront_domain != "" ? [
     "https://${module.frontend.cloudfront_domain}/auth/signin",
   ] : [])
 
@@ -90,15 +90,17 @@ module "backend" {
   environment  = var.environment
   project_name = var.project_name
 
-  database_url          = var.supabase_database_url
-  anthropic_api_key     = var.anthropic_api_key
-  cognito_user_pool_id  = module.cognito.user_pool_id
-  cognito_client_id     = module.cognito.web_client_id
-  cognito_region        = var.aws_region
-  cognito_jwks_url      = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.user_pool_id}/.well-known/jwks.json"
-  cors_allow_origins    = var.cors_allow_origins != "" ? var.cors_allow_origins : (module.frontend.cloudfront_domain != "" ? "https://${module.frontend.cloudfront_domain}" : "http://localhost:5173,http://localhost:3000")
-  ses_sender_email      = var.ses_sender_email
-  email_enabled         = var.email_enabled
+  database_url                    = var.supabase_database_url
+  anthropic_api_key               = var.anthropic_api_key
+  cognito_user_pool_id            = module.cognito.user_pool_id
+  cognito_client_id               = module.cognito.web_client_id
+  cognito_region                  = var.aws_region
+  cognito_jwks_url                = "https://cognito-idp.${var.aws_region}.amazonaws.com/${module.cognito.user_pool_id}/.well-known/jwks.json"
+  cors_allow_origins              = var.cors_allow_origins != "" ? var.cors_allow_origins : (module.frontend.cloudfront_domain != "" ? "https://${module.frontend.cloudfront_domain}" : "http://localhost:5173,http://localhost:3000")
+  ses_sender_email                = var.ses_sender_email
+  email_enabled                   = var.email_enabled
+  alert_email                     = var.alert_email
+  plan_generation_mapping_enabled = var.plan_generation_mapping_enabled
 }
 
 module "iam" {

@@ -10,7 +10,7 @@ output "api_gateway_stage" {
 
 output "api_endpoint" {
   description = "API Gateway endpoint URL"
-  value       = "${aws_api_gateway_stage.api.invoke_url}"
+  value       = aws_api_gateway_stage.api.invoke_url
 }
 
 output "lambda_function_name" {
@@ -21,4 +21,14 @@ output "lambda_function_name" {
 output "lambda_function_arn" {
   description = "Lambda function ARN"
   value       = aws_lambda_function.api.arn
+}
+
+output "plan_generation_queue_url" {
+  description = "Plan generation SQS queue URL"
+  value       = aws_sqs_queue.plan_generation.url
+}
+
+output "plan_generation_dlq_url" {
+  description = "Plan generation DLQ URL"
+  value       = aws_sqs_queue.plan_generation_dlq.url
 }

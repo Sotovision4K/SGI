@@ -85,16 +85,17 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
-      ENVIRONMENT             = var.environment
-      DATABASE_URL            = var.database_url
-      ANTHROPIC_API_KEY       = var.anthropic_api_key
-      AWS_COGNITO_USER_POOL_ID = var.cognito_user_pool_id
-      AWS_COGNITO_CLIENT_ID   = var.cognito_client_id
-      AWS_COGNITO_REGION      = var.cognito_region
-      AWS_COGNITO_JWKS_URL    = var.cognito_jwks_url
-      CORS_ALLOW_ORIGINS      = var.cors_allow_origins
-      SES_SENDER_EMAIL        = var.ses_sender_email
-      EMAIL_ENABLED           = var.email_enabled
+      ENVIRONMENT               = var.environment
+      DATABASE_URL              = var.database_url
+      ANTHROPIC_API_KEY         = var.anthropic_api_key
+      AWS_COGNITO_USER_POOL_ID  = var.cognito_user_pool_id
+      AWS_COGNITO_CLIENT_ID     = var.cognito_client_id
+      AWS_COGNITO_REGION        = var.cognito_region
+      AWS_COGNITO_JWKS_URL      = var.cognito_jwks_url
+      CORS_ALLOW_ORIGINS        = var.cors_allow_origins
+      SES_SENDER_EMAIL          = var.ses_sender_email
+      EMAIL_ENABLED             = var.email_enabled
+      PLAN_GENERATION_QUEUE_URL = aws_sqs_queue.plan_generation.url
     }
   }
 
@@ -102,6 +103,121 @@ resource "aws_lambda_function" "api" {
     Name        = "${var.project_name}-${var.environment}-api"
     Environment = var.environment
   }
+}
+
+# ── Plan Generation: SQS queues ────────────────────────────────────────────
+
+resource "aws_sqs_queue" "plan_generation_dlq" {
+  name                      = "${var.project_name}-${var.environment}-plan-generation-dlq"
+  message_retention_seconds = 259200 # 3 days
+}
+
+resource "aws_sqs_queue" "plan_generation" {
+  name                       = "${var.project_name}-${var.environment}-plan-generation"
+  visibility_timeout_seconds = var.plan_generation_visibility_timeout # 300s — > Lambda timeout (120s) and > LEASE_TTL (180s)
+  message_retention_seconds  = 259200                                 # 3 days
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.plan_generation_dlq.arn
+    maxReceiveCount     = var.plan_generation_max_receive_count # 4
+  })
+}
+
+# Queue resource policy — least privilege (security H1): only the API Lambda role may SendMessage.
+resource "aws_sqs_queue_policy" "plan_generation" {
+  queue_url = aws_sqs_queue.plan_generation.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AllowSendFromApiLambdaRoleOnly"
+        Effect = "Allow"
+        Principal = {
+          AWS = aws_iam_role.lambda_exec.arn
+        }
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.plan_generation.arn
+      }
+    ]
+  })
+}
+
+# Least-privilege identity policy on the Lambda exec role.
+resource "aws_iam_role_policy" "lambda_sqs" {
+  name = "${var.project_name}-${var.environment}-lambda-sqs"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid      = "SqsEnqueueMainQueue"
+        Effect   = "Allow"
+        Action   = ["sqs:SendMessage"]
+        Resource = aws_sqs_queue.plan_generation.arn
+      },
+      {
+        Sid    = "SqsPollMainQueue"
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes",
+          "sqs:GetQueueUrl"
+        ]
+        Resource = aws_sqs_queue.plan_generation.arn
+      }
+    ]
+  })
+}
+
+resource "aws_lambda_event_source_mapping" "plan_generation" {
+  event_source_arn = aws_sqs_queue.plan_generation.arn
+  function_name    = aws_lambda_function.api.arn
+
+  batch_size              = 1
+  function_response_types = ["ReportBatchItemFailures"]
+  enabled                 = var.plan_generation_mapping_enabled
+
+  lifecycle {
+    precondition {
+      condition     = var.plan_generation_visibility_timeout > var.timeout && var.plan_generation_visibility_timeout > 180
+      error_message = "plan_generation_visibility_timeout must be strictly greater than both the Lambda timeout and LEASE_TTL_SECONDS (180)."
+    }
+  }
+}
+
+# ── Plan Generation: DLQ alarm → SNS ────────────────────────────────────────
+
+resource "aws_sns_topic" "alerts" {
+  name = "${var.project_name}-${var.environment}-plan-generation-alerts"
+}
+
+resource "aws_sns_topic_subscription" "email_alerts" {
+  topic_arn = aws_sns_topic.alerts.arn
+  protocol  = "email"
+  endpoint  = var.alert_email
+}
+
+resource "aws_cloudwatch_metric_alarm" "dlq_has_messages" {
+  alarm_name          = "${var.project_name}-${var.environment}-plan-generation-dlq-messages"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  namespace           = "AWS/SQS"
+  period              = 60
+  statistic           = "Maximum"
+  threshold           = 0
+  alarm_description   = "Alert when the plan generation DLQ has messages (indicates a terminal failure)."
+  treat_missing_data  = "notBreaching"
+
+  dimensions = {
+    QueueName = aws_sqs_queue.plan_generation_dlq.name
+  }
+
+  alarm_actions = [aws_sns_topic.alerts.arn]
+  ok_actions    = [aws_sns_topic.alerts.arn]
 }
 
 resource "aws_api_gateway_rest_api" "api" {

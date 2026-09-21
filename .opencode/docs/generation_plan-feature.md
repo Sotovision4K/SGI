@@ -155,7 +155,7 @@ Visibility timeout: **180s** — comfortably ≥ a single 1500-token call (~25�
 
 ---
 
-## 9. LLM output / entity compatibility — ⚠️ PENDING
+## 9. LLM output / entity compatibility — ✅ RESOLVED
 
 Canonical LLM output today = `emit_action_plan` tool schema (`backend/src/adapters/llm/prompts/plan_tool.json`), parsed into `backend/src/domain/entities/plan.py` (`Plan.summary_md` + `Task[]`).
 
@@ -272,9 +272,9 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 7. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`. ✅ **DONE** (Phase 3 — async enqueue `202` + status endpoint + `GET /plan` new task fields; `PUT /plan/tasks/{task_id}` deferred to Phase 6)
 8. `main.py` — new-path exception handlers (503/400/429/409). ✅ **DONE** (Phase 3 — 503/400/429 registered; 409 deferred with Phase 6 edit-task conflict)
 9. `handler.py` — `aws:sqs` branch → worker; atomic claim; partial-batch response. ✅ **DONE** (Phase 2 `aws:sqs` branch + partial-batch response; Phase 4 worker delegates to `plan_generation.generate` — retryable → redelivery, terminal → delete.)
-10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ⬜ not started — full checklist in the "Phase 5 — handoff & checklist" section (backend M1/M2/M3 fixes + infra A–C).
+10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ✅ **DONE** (Phase 5 Stage B — `infra/modules/backend/`: SQS queue + DLQ + redrive, queue resource policy, `lambda_sqs` IAM, event-source mapping [disabled by default → go-live switch], SNS topic + email sub, CloudWatch DLQ alarm; `terraform validate` clean.)
 11. Frontend — generate loader (hard-stopper on edits during run + block double-click); poll status; in-app completion toast; edit-task view wired to `PUT`. ⬜ not started (synchronous generate only today)
-12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 4** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`; 280 passing). Remaining: edit-task ownership (Phase 6), retry→DLQ e2e (Phase 5).
+12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 5 Stage A** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`) + Phase 5 Stage A (`test_anthropic_adapter.py` 4xx→terminal mapping, `test_routes.py` non-string answer rejection, `test_plan_job.py` lease-guarded checkpoint) + Tier-1 failure-path (`TestRetryLadder`: retryable-recovers-on-redelivery, retryable-exhausts-cap-and-fails, retryable-cap-yields-partial-plan, completed-job-skipped-on-duplicate-redelivery). Remaining: edit-task ownership (Phase 6), real-stack retry→DLQ smoke (Phase 5 Stage C).
 
 ---
 
@@ -436,7 +436,7 @@ Order: **fix H1/H2 → add process-e2e test → push + one manual smoke test** (
 
 **Implemented (2026-09-17)**: `tests/integration/test_process_e2e.py` (route → capturing queue → `run_plan_generation` with fake LLM + real SQLite repo → `GET /plan`/`GET /plan-generation/status`) and `tests/unit/test_plan_generation_worker.py` (partial-batch-failure contract). `run_plan_generation` gained optional `repo`/`llm` params for test injection (also closes code-review LOW-8).
 
-### Phase 5 — handoff & checklist (next agent)
+### Phase 5 — handoff & checklist (Stage A + B complete — see "Phase 5 — Stage A + B completed" below)
 
 Phases 0–4 are complete and gated (286 tests, ruff clean; security + code review run, H1/H2 fixed; local process-e2e in place). Phase 5 turns the queue on for real. **Do the backend fixes first, then the Terraform.**
 
@@ -467,9 +467,34 @@ No `aws_sqs*` resource exists yet. Add a `queue` module (or extend `backend`) th
 - `terraform plan` applies cleanly in `infra/environments/dev`.
 - A real enqueue (`POST /generate-plan`) → worker picks it up → plan lands via `GET /plan`; a forced failure lands in the DLQ and triggers the alarm.
 
-### Verification gates (as of 2026-09-17)
+### Phase 5 — Stage A + B completed (2026-09-19)
+
+#### Stage A — backend fixes (done)
+
+1. **M1 — permanent 4xx → terminal**: `LLMRequestRejectedError(TerminalError)` in `errors.py`; `anthropic_adapter.generate_segment` catches `(BadRequestError, AuthenticationError, PermissionDeniedError, NotFoundError, RequestTooLargeError, UnprocessableEntityError)` **before** `APIStatusError` → terminal. `RateLimitError`/5xx stay retryable. Parametrized tests per code.
+2. **M2 — reject non-string answers**: `UpsertFindingsRequest.answers: dict[str, str]` + validator mirroring `UpdatePreDiagnosisRequest`. (pydantic 2.10.6 also rejects scalars — stricter than the spec minimum.)
+3. **M3 — guard `update_job_segments`**: conditional `UPDATE … WHERE status='running'` + `rowcount != 1 → LeaseLostError`; worker abandons (no fail/complete/requeue/persist). Invariant documented.
+
+#### Stage B — Terraform (done, `terraform validate` clean)
+
+Extended `infra/modules/backend/` (no new module): `plan_generation` SQS queue (visibility 300s) + `plan_generation_dlq` (3-day retention) + redrive (`maxReceiveCount=4`); `aws_sqs_queue_policy` (SendMessage → Lambda role only); `aws_iam_role_policy.lambda_sqs` (5 actions, main queue ARN only); `aws_lambda_event_source_mapping` (`batch_size=1`, `ReportBatchItemFailures`, `enabled=false` go-live switch); `aws_sns_topic` + email sub; `aws_cloudwatch_metric_alarm` DLQ → SNS; `PLAN_GENERATION_QUEUE_URL` env var.
+
+> **Correction to the handoff checklist**: `maximum_retry_attempts` on the event-source mapping is **stream-only (Kinesis/DynamoDB), invalid for SQS** — removed. For SQS the redrive policy's `maxReceiveCount` is the authoritative retry→DLQ mechanism (already 4). No backend change needed; the worker's `_MAX_REDELIVERIES=2` and the queue `maxReceiveCount=4` are independent and already aligned.
+>
+> **Nuance**: graceful failures never reach the DLQ — the worker marks the job `failed` and ACKs the message. Only non-graceful failures (poison message / Lambda crash) hit the DLQ via redrive. The "fail → DLQ" e2e is therefore a *poison-message → DLQ* test (Stage C).
+
+#### Tools (`.opencode/tools/`)
+
+- `enqueue-plan-test.ts` — authenticated (Cognito) `POST /generate-plan` test; auto-refreshes an expired access token via `COGNITO_REFRESH_TOKEN`.
+- `fail-plan-job.ts` — marks an orphaned `queued|running` job `failed` (direct `pg` UPDATE) so a process can be re-enqueued.
+
+#### Tier-1 failure-path tests (`test_plan_generation.py::TestRetryLadder`)
+
+`retryable-recovers-on-redelivery-resume`, `retryable-exhausts-cap-and-fails`, `retryable-cap-yields-partial-plan`, `completed-job-skipped-on-duplicate-redelivery` — free/CI-able (fake LLM + SQLite + `fast_retries` to neutralize tenacity backoff). Confirm the retry ladder (tenacity → `requeue_job` → checkpoint resume → terminal) and idempotency without AWS.
+
+### Verification gates (as of 2026-09-19)
 
 - `ruff check .`: clean.
-- `pytest`: **286 passed** (282 after H1/H2; +4 for the e2e + worker-unit tests).
+- `pytest`: **308 passed**.
 
-Status: Phase 0–4 complete; code-review H1 + H2 fixed; local process-e2e test in place. **Next: Phase 5** — see the "Phase 5 — handoff & checklist" section (backend M1/M2/M3 fixes first, then Terraform: SQS + DLQ + event-source mapping + `PLAN_GENERATION_QUEUE_URL` + CloudWatch alarm), then push + one manual smoke test on the real stack. The Phase 4 worker now `complete_job`/`fail_job`s, so the event-source mapping can be enabled safely (the Phase 3/4 sequencing guard no longer applies).
+Status: Phase 0–5 Stage A+B complete (backend M1/M2/M3 fixes + Terraform applied + `terraform validate` clean + Tier-1 failure-path tests). **Next: Phase 5 Stage C** — enable the event-source mapping (go-live) + one manual real-stack smoke (enqueue → plan via `GET /plan`; poison message → DLQ → alarm email). Frontend loader/poller (Phase 6) still pending.

@@ -42,3 +42,13 @@ output "api_endpoint" {
   description = "Backend API endpoint"
   value       = module.backend.api_endpoint
 }
+
+output "plan_generation_queue_url" {
+  description = "Plan generation SQS queue URL"
+  value       = module.backend.plan_generation_queue_url
+}
+
+output "plan_generation_dlq_url" {
+  description = "Plan generation DLQ URL"
+  value       = module.backend.plan_generation_dlq_url
+}

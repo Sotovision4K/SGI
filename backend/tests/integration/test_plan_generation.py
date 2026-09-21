@@ -6,6 +6,7 @@ in-memory SQLite engine, plus the pure `_merge` dedupe/source_clause logic.
 
 import re
 import uuid
+from collections import Counter
 
 import pytest
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -40,10 +41,20 @@ def _bucket_from_prompt(user_prompt: str) -> str:
 
 
 class FakeLLM:
-    """LLMPort fake: returns a distinguishable segment per bucket, or raises."""
+    """LLMPort fake: returns a distinguishable segment per bucket, or raises.
 
-    def __init__(self, fail: dict[str, Exception] | None = None):
-        self.fail = fail or {}  # bucket NAME -> Exception to raise every call
+    ``fail``: bucket NAME -> Exception raised on EVERY call (persistent).
+    ``fail_times``: bucket NAME -> number of transient ``RetryableError``
+    failures before the bucket starts succeeding (for retry-ladder tests).
+    """
+
+    def __init__(
+        self,
+        fail: dict[str, Exception] | None = None,
+        fail_times: dict[str, int] | None = None,
+    ):
+        self.fail = fail or {}
+        self.fail_times = fail_times or {}
         self.calls: list[str] = []
 
     async def generate_segment(
@@ -53,6 +64,10 @@ class FakeLLM:
         bucket = _bucket_from_prompt(user_prompt)
         if bucket in self.fail:
             raise self.fail[bucket]
+        remaining = self.fail_times.get(bucket, 0)
+        if remaining > 0:
+            self.fail_times[bucket] = remaining - 1
+            raise RateLimitError("transient rate limit")
         return SegmentResult(
             summary_md=f"Resumen {bucket}",
             tasks=[
@@ -83,6 +98,21 @@ async def repo():
     repository._engine = engine
     yield repository
     await engine.dispose()
+
+
+@pytest.fixture
+def fast_retries(monkeypatch):
+    """Neutralize tenacity's exponential backoff so retry-ladder tests are instant.
+
+    `_call_segment` is decorated with `@retry(wait=wait_exponential(...))`. The
+    retry controller sleeps between attempts via its `.sleep` callable; swap it
+    for an async no-op so a 3-attempt retry doesn't cost ~3s per segment.
+    """
+
+    async def _no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr(plan_generation._call_segment.retry, "sleep", _no_sleep)
 
 
 async def _setup_job(repo):
@@ -253,6 +283,112 @@ class TestPlanGenerationPipeline:
         assert job.completed_count == 0  # complete_job NOT called
         # No plan row was written.
         assert await repo.get_plan(process.id) is None
+
+
+class TestRetryLadder:
+    """Tier-1 failure-path tests: the retry ladder + redelivery cap + idempotency.
+
+    These exercise the whole-job retry semantics (spec §7, decision 19) without
+    AWS/SQS: tenacity → `requeue_job` (+failed_attempts) → redelivery resume →
+    terminal. `fast_retries` makes the tenacity backoff instant.
+    """
+
+    @pytest.mark.asyncio
+    async def test_retryable_recovers_on_redelivery_resume(self, repo, fast_retries):
+        # B1 fails transiently (4 times → tenacity exhausts in call 1, then one
+        # more failure + success on the redelivered run). B2/B3 succeed in call 1.
+        process, consultant_id = await _setup_job(repo)
+        llm = FakeLLM(fail_times={"Liderazgo": 4})
+
+        # Call 1: B1 retryable → requeue + raise (whole-job redelivery).
+        with pytest.raises(RetryableError):
+            await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.QUEUED
+        assert job.failed_attempts == 1
+
+        # Call 2 (redelivery): B1 succeeds; B2/B3 are NOT re-processed.
+        await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.COMPLETED
+        plan = await repo.get_plan(process.id)
+        assert {t.title for t in plan.tasks} == {
+            "Tarea Liderazgo",
+            "Tarea Contexto y Apoyo",
+            "Tarea Operación y Mejora",
+        }
+
+        counts = Counter(_bucket_from_prompt(c) for c in llm.calls)
+        assert counts["Liderazgo"] == 5  # 3 (tenacity) + 2 (redelivery: 1 fail + 1 ok)
+        assert counts["Contexto y Apoyo"] == 1  # checkpoint-resume: not re-cooked
+        assert counts["Operación y Mejora"] == 1
+
+    @pytest.mark.asyncio
+    async def test_retryable_exhausts_cap_and_fails(self, repo, fast_retries):
+        # Every bucket is persistently retryable → the redelivery cap
+        # (_MAX_REDELIVERIES=2) is exhausted and the job goes terminal.
+        process, consultant_id = await _setup_job(repo)
+        llm = FakeLLM(fail={name: RateLimitError("rate limit") for name in _BUCKET_NAMES})
+
+        for _ in range(3):  # initial + 2 redeliveries
+            try:
+                await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+            except RetryableError:
+                pass
+
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.FAILED
+        assert job.error == JobErrorCode.SEGMENT_GENERATION_FAILED.value
+        # 2 requeues + the terminal fail_job's own bump.
+        assert job.failed_attempts == 3
+        # Nothing persisted — all segments failed.
+        assert await repo.get_plan(process.id) is None
+
+    @pytest.mark.asyncio
+    async def test_retryable_cap_yields_partial_plan(self, repo, fast_retries):
+        # B1 is persistently retryable; B2/B3 succeed. After the cap, the
+        # completed segments are persisted (partial plan, decision 18) and the
+        # job completes — the failed B1 is marked in segments.
+        process, consultant_id = await _setup_job(repo)
+        llm = FakeLLM(fail={"Liderazgo": RateLimitError("rate limit")})
+
+        for _ in range(3):
+            try:
+                await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+            except RetryableError:
+                pass
+
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.COMPLETED
+        assert job.segments["B1"]["status"] == "failed"
+
+        plan = await repo.get_plan(process.id)
+        assert {t.title for t in plan.tasks} == {
+            "Tarea Contexto y Apoyo",
+            "Tarea Operación y Mejora",
+        }
+
+    @pytest.mark.asyncio
+    async def test_completed_job_skipped_on_duplicate_redelivery(self, repo, fast_retries):
+        # Idempotency: a duplicate SQS redelivery for an already-completed job
+        # must be a no-op — no re-cook, no double `completed_count`.
+        process, consultant_id = await _setup_job(repo)
+        llm = FakeLLM()
+
+        await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.COMPLETED
+        assert job.completed_count == 1
+        calls_after_first = len(llm.calls)
+
+        await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+
+        job = await repo.get_plan_job(process.id)
+        assert job.status == PlanJobStatus.COMPLETED
+        assert job.completed_count == 1  # not double-bumped
+        assert len(llm.calls) == calls_after_first  # no re-cook
 
 
 class TestMerge:
