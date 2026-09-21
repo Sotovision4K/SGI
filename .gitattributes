@@ -1,0 +1,6 @@
+# Normalize line endings to LF in the repository.
+#
+# Prevents CRLF noise (from Windows/WSL editors) from polluting diffs and
+# `git status`. `text=auto` makes git treat detected-text files as text and
+# normalize to LF on commit, while leaving binary files untouched.
+* text=auto
