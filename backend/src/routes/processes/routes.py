@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.finding import Finding
+from src.domain.entities.plan import TaskPriority
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.plan_job import PlanJob, make_default_segments
 from src.adapters.db.process_repository import ProcessRepository
@@ -130,6 +131,20 @@ class PlanResponse(BaseModel):
     summary_md: str
     generated_at: str
     tasks: list[TaskSchema]
+
+
+class UpdateTaskRequest(BaseModel):
+    """Partial task edit (Phase 6). Only fields the client explicitly set are
+    applied (the route uses model_dump(exclude_unset=True)); an explicit null
+    clears document_title but is ignored for non-nullable fields."""
+
+    title: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    priority: TaskPriority | None = None
+    estimated_effort: str | None = Field(default=None, max_length=100)
+    owner_role: str | None = Field(default=None, max_length=100)
+    require_document: bool | None = None
+    document_title: str | None = Field(default=None, max_length=200)
 
 
 class PlanGenerationEnqueueResponse(BaseModel):
@@ -443,6 +458,59 @@ async def get_plan(
             )
             for t in plan.tasks
         ],
+    )
+
+
+@router.put("/{process_id}/plan/tasks/{task_id}", response_model=TaskSchema)
+async def update_task(
+    process_id: UUID,
+    task_id: UUID,
+    payload: UpdateTaskRequest | None = None,
+    *,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> TaskSchema:
+    """Hand-edit a single plan task (Phase 6).
+
+    - 404 if the caller does not own the process
+    - 409 while a generation job is queued/running (the plan is about to be
+      replaced — edits would be silently discarded)
+    - 400 if the body carries no fields (no body / empty {})
+    - 404 if the task does not exist under this process's plan
+    """
+    await _require_process_owner(process_id, repo, current_user)
+
+    active = await repo.get_active_job(process_id)
+    if active is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="No se puede editar el plan mientras se está generando",
+        )
+
+    updates = payload.model_dump(exclude_unset=True) if payload is not None else {}
+    if not updates:
+        raise HTTPException(status_code=400, detail="No hay campos para actualizar")
+
+    if "priority" in updates and updates["priority"] is not None:
+        # Persist as the plain string value; patch_task also converts
+        # defensively, but the wire contract here is a str dict.
+        updates["priority"] = updates["priority"].value
+
+    updated = await repo.patch_task(process_id, task_id, updates)
+    if updated is None:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+
+    return TaskSchema(
+        id=str(updated.id),
+        title=updated.title,
+        description=updated.description,
+        priority=updated.priority.value,
+        estimated_effort=updated.estimated_effort,
+        owner_role=updated.owner_role,
+        sort_order=updated.sort_order,
+        source_clause=updated.source_clause,
+        require_document=updated.require_document,
+        document_title=updated.document_title,
     )
 
 

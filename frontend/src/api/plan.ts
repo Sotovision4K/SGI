@@ -20,6 +20,19 @@ export interface PlanTask {
   estimated_effort: string;
   owner_role: string;
   sort_order: number;
+  source_clause: string;
+  require_document: boolean;
+  document_title: string | null;
+}
+
+export interface UpdateTaskInput {
+  title?: string;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high';
+  estimated_effort?: string;
+  owner_role?: string;
+  require_document?: boolean;
+  document_title?: string | null;
 }
 
 export interface Plan {
@@ -67,6 +80,20 @@ export async function generatePlan(
 ): Promise<Plan> {
   return apiRequest<Plan>(`/processes/${processId}/generate-plan`, {
     method: 'POST',
+    token,
+    signal,
+  });
+}
+
+export async function updateTask(
+  processId: string,
+  taskId: string,
+  input: UpdateTaskInput,
+  { token, signal }: ApiCallOptions,
+): Promise<PlanTask> {
+  return apiRequest<PlanTask>(`/processes/${processId}/plan/tasks/${taskId}`, {
+    method: 'PUT',
+    body: input,
     token,
     signal,
   });

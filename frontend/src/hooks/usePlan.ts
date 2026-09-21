@@ -1,5 +1,13 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getFindings, saveFindings, generatePlan, type Findings, type Plan } from '../api/plan';
+import {
+  getFindings,
+  saveFindings,
+  generatePlan,
+  updateTask,
+  type Findings,
+  type Plan,
+  type UpdateTaskInput,
+} from '../api/plan';
 import { useApiAuthBridge } from '../lib/use-api-auth';
 import { toast } from '../components/ui/toast';
 import { getErrorMessage } from '../lib/error-utils';
@@ -36,6 +44,22 @@ export function useGeneratePlan(processId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plan', processId] });
       queryClient.invalidateQueries({ queryKey: ['processes'] });
+    },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
+    },
+  });
+}
+
+export function useUpdateTask(processId: string) {
+  const { getToken } = useApiAuthBridge();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, input }: { taskId: string; input: UpdateTaskInput }) =>
+      updateTask(processId, taskId, input, { token: getToken() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plan', processId] });
+      toast.success('Tarea actualizada correctamente');
     },
     onError: (error) => {
       toast.danger(getErrorMessage(error), { title: 'Error' });

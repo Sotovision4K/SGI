@@ -53,6 +53,10 @@ class PlanTable(SQLModel, table=True):
     process_id: uuid.UUID = Field(unique=True, index=True, foreign_key="processes.id")
     summary_md: str = Field(default="")
     generated_at: str
+    # Persistence-only edit metadata (Phase 6) — deliberately NOT on the Plan
+    # domain entity: they describe how the stored plan was produced/edited.
+    updated_at: str = Field(default="")   # ISO 8601, bumped on every task edit
+    revision: int = Field(default=0)      # 0 = LLM-generated; +1 per hand-edit
 
 
 class TaskTable(SQLModel, table=True):
@@ -314,11 +318,16 @@ class ProcessRepository:
                 await session.delete(existing)
                 await session.flush()
 
+            # A (re)generated plan is pristine LLM output: revision resets to 0
+            # and updated_at starts fresh. Hand-edits via patch_task bump both.
+            now = datetime.now(timezone.utc).isoformat()
             plan_row = PlanTable(
                 id=plan.id,
                 process_id=plan.process_id,
                 summary_md=plan.summary_md,
-                generated_at=datetime.now(timezone.utc).isoformat(),
+                generated_at=now,
+                updated_at=now,
+                revision=0,
             )
             session.add(plan_row)
             for task in plan.tasks:
@@ -352,6 +361,72 @@ class ProcessRepository:
             )).scalars().all()
             tasks = [self._task_to_domain(t) for t in task_rows]
             return self._plan_to_domain(plan_row, tasks)
+
+    async def patch_task(
+        self, process_id: uuid.UUID, task_id: uuid.UUID, updates: dict
+    ) -> Task | None:
+        """Apply a partial hand-edit to a single task of a process's plan (Phase 6).
+
+        # Q: Why return None for BOTH "no plan" and "no matching task"?
+        # A: The route maps both to the same 404 ("Tarea no encontrada").
+        #    Scoping the task lookup by `plan_id == plan.id` also makes a task
+        #    belonging to another process's plan indistinguishable from a
+        #    non-existent one — no cross-process leakage (IDOR-safe by scoping).
+        # Q: Why skip None values for every field except document_title?
+        # A: The route uses model_dump(exclude_unset=True), so a key present
+        #    with None means the client explicitly sent null. For the nullable
+        #    document_title that is a deliberate "clear it"; for every other
+        #    (non-nullable) field, null means "not provided" and must not
+        #    clobber the stored value.
+        # Q: Why convert priority defensively (enum → .value)?
+        # A: The route already converts TaskPriority to its string value, but
+        #    the repository must not depend on every caller doing so — a raw
+        #    enum stored in the str column would not round-trip uniformly
+        #    across dialects. Normalize at the boundary.
+        # Q: Why bump plan.updated_at / plan.revision on a *task* edit?
+        # A: They are plan-level edit metadata (persistence-only, not on the
+        #    Plan entity): updated_at powers "last edited" display and revision
+        #    marks a hand-edited plan (0 = pristine LLM output, +1 per
+        #    hand-edit). One patch call is one hand-edit.
+        # Decision: single session/transaction — find plan, find task scoped
+        #    to that plan, setattr the provided fields, bump plan metadata,
+        #    commit, refresh the task row, return the domain Task.
+        """
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            plan = (
+                await session.execute(
+                    select(PlanTable).where(PlanTable.process_id == process_id)
+                )
+            ).scalar_one_or_none()
+            if plan is None:
+                return None
+
+            task = (
+                await session.execute(
+                    select(TaskTable).where(
+                        TaskTable.id == task_id, TaskTable.plan_id == plan.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if task is None:
+                return None
+
+            for key, value in updates.items():
+                if value is None and key != "document_title":
+                    # Explicit null on a non-nullable field = "not provided".
+                    continue
+                if key == "priority" and hasattr(value, "value"):
+                    value = value.value  # TaskPriority enum → "high"/"medium"/"low"
+                setattr(task, key, value)
+
+            plan.updated_at = datetime.now(timezone.utc).isoformat()
+            plan.revision += 1
+
+            await session.commit()
+            await session.refresh(task)
+            return self._task_to_domain(task)
 
     # ---- LLM audit log -----------------------------------------------------
 
