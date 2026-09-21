@@ -492,9 +492,49 @@ Extended `infra/modules/backend/` (no new module): `plan_generation` SQS queue (
 
 `retryable-recovers-on-redelivery-resume`, `retryable-exhausts-cap-and-fails`, `retryable-cap-yields-partial-plan`, `completed-job-skipped-on-duplicate-redelivery` — free/CI-able (fake LLM + SQLite + `fast_retries` to neutralize tenacity backoff). Confirm the retry ladder (tenacity → `requeue_job` → checkpoint resume → terminal) and idempotency without AWS.
 
+### ⚠️ BLOCKING BUG — asyncio event-loop in Lambda (found in Phase 5 Stage C smoke test)
+
+The go-live smoke test (2026-09-21) surfaced a **pre-existing production bug** that blocks Stage C. **Detour: fix in a dedicated session.**
+
+**Symptom (live stack):**
+- `GET /processes/{id}/plan-generation/status` → `502 {"message":"Internal server error"}`.
+- Worker fails to process the SQS record → job stays `queued`, 0 `audit_logs_llm` rows → message redelivers and will DLQ after ~4 attempts.
+
+**Two distinct errors** (CloudWatch log group `/aws/lambda/cert-app-dev-api`):
+
+1. **HTTP path (Mangum)** — `RuntimeError: There is no current event loop in thread 'MainThread'`
+   ```
+   File "/var/task/handler.py", line 22, in handler
+     return _mangum(event, context)
+   File "/var/task/mangum/adapter.py", line 75, in __call__
+     lifespan_cycle = LifespanCycle(self.app, self.lifespan)
+   File "/var/task/mangum/protocols/lifespan.py", line 62, in __init__
+     self.loop = asyncio.get_event_loop()
+   ```
+   **Cause:** Mangum's `LifespanCycle` calls the deprecated `asyncio.get_event_loop()`, which **raises** on Python 3.12 (no auto-loop creation). The Lambda handler runs with no running loop.
+
+2. **Worker path (SQS)** — `Task … got Future … attached to a different loop`
+   ```
+   Failed to process SQS record …: Task <Task … handle_sqs_event()> got Future … attached to a different loop
+   ```
+   **Cause:** `get_engine()` (`src/adapters/db/user_repository.py:52`) caches a **global `_engine` singleton**; its asyncpg pool binds to the first event loop it's used on. `handler.py:21` calls `asyncio.run(handle_sqs_event(event))` per SQS record — a **fresh loop** each time — so the cached pool's connections sit on a stale (closed) loop.
+
+**Where:**
+- `backend/handler.py` (Mangum wiring + `asyncio.run` for the SQS branch).
+- `backend/src/adapters/db/user_repository.py` `get_engine()` (global singleton engine).
+- Lambda runtime `python3.12` (confirm via `aws lambda get-function-configuration --function-name cert-app-dev-api`).
+
+**Proposed fix (two parts):**
+1. HTTP — give the non-SQS branch a current loop (`asyncio.new_event_loop()` + `set_event_loop()` around `_mangum(event, context)`), or pin/upgrade Mangum to a Python-3.12-safe version.
+2. Worker — stop sharing the global engine across loops: `poolclass=NullPool` (or build a fresh engine per invocation) so asyncpg connections aren't cached on a stale loop.
+
+**Reproduction:** on the live stack, `POST /processes/{id}/generate-plan` → 202, then poll `GET /plan-generation/status` → 502; both errors appear in CloudWatch. The local suite (SQLite + fake LLM) **cannot** reproduce — SQLite has no loop-bound pool and Mangum/Lambda never run locally.
+
+**Why it slipped:** local tests use SQLite (no asyncpg loop binding) and never exercise Mangum/Lambda; the Python 3.12 `get_event_loop()` regression post-dates the last successful manual smoke test.
+
 ### Verification gates (as of 2026-09-19)
 
 - `ruff check .`: clean.
 - `pytest`: **308 passed**.
 
-Status: Phase 0–5 Stage A+B complete (backend M1/M2/M3 fixes + Terraform applied + `terraform validate` clean + Tier-1 failure-path tests). **Next: Phase 5 Stage C** — enable the event-source mapping (go-live) + one manual real-stack smoke (enqueue → plan via `GET /plan`; poison message → DLQ → alarm email). Frontend loader/poller (Phase 6) still pending.
+Status: Phase 0–5 Stage A+B complete (backend M1/M2/M3 fixes + Terraform applied + `terraform validate` clean + Tier-1 failure-path tests). **Stage C is BLOCKED by a pre-existing asyncio event-loop bug in the Lambda** (see "⚠️ BLOCKING BUG" above) — the go-live smoke revealed a 502 on the HTTP path and a "different loop" error on the worker path. Fix in a dedicated session, then re-run the Stage C smoke (enqueue → plan via `GET /plan`; poison message → DLQ → alarm email). Frontend loader/poller (Phase 6) still pending.
