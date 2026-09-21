@@ -4,6 +4,7 @@ from typing import Annotated
 
 from sqlmodel import SQLModel, Field, select
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.pool import NullPool
 
 from src.domain.entities.user import User, UserRole
 from src.domain.repositories.user_repository import UserRepositoryPort
@@ -57,10 +58,10 @@ def get_engine(database_url: str):
         _engine = create_async_engine(
             database_url, 
             echo=False,  # Disabled in production - prevents sensitive data leakage
-            pool_pre_ping=True,  # Verify connections before using them
-            pool_size=1,  # Minimal pool for serverless (PgBouncer handles real pooling)
-            max_overflow=2,  # Allow a few extra connections under burst load
-            pool_recycle=300,  # Recycle connections every 5 min (avoids Supabase idle limits)
+            poolclass=NullPool,  # No cross-invocation connection reuse: asyncpg
+                                 # pools bind to one event loop, and Lambda may run
+                                 # each invocation on a fresh loop (BLOCKING BUG).
+                                 # Each checkout is a fresh connect (PgBouncer pools upstream).
             connect_args={
                 "timeout": 15,  # Longer timeout for Supabase cold starts
                 "statement_cache_size": 0,  # Disable asyncpg prepared-statement cache for PgBouncer compatibility
