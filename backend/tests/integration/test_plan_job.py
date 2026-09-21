@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
 from sqlmodel import SQLModel
 
-from src.adapters.db.process_repository import ProcessRepository, PlanJobTable
+from src.adapters.db.process_repository import LEASE_TTL_SECONDS, ProcessRepository, PlanJobTable
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus, make_default_segments
 from src.errors import JobErrorCode, LeaseLostError
 
@@ -348,8 +348,9 @@ class TestPlanJobLease:
         await repo.create_plan_job(job)
         await repo.claim_job(job.process_id, job.consultant_id)  # running
 
-        # Age the heartbeat beyond the 180s lease TTL.
-        await self._age_heartbeat(repo, job.process_id, seconds=200)
+        # Age the heartbeat beyond the lease TTL (reference the constant so the
+        # test stays correct if LEASE_TTL_SECONDS is re-tuned).
+        await self._age_heartbeat(repo, job.process_id, seconds=LEASE_TTL_SECONDS + 20)
 
         # A redelivered message must reclaim the stale `running` job.
         assert await repo.claim_job(job.process_id, job.consultant_id) is True
