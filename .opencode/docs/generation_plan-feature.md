@@ -266,15 +266,15 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 1. Create `backend/questionnaires/questionnaire_map.json` — buckets + per-question `{es_label, clause, group, bucket}` (per-standard); drives bucket split (#1) and Spanish labels (#8); DB stays English. ✅ **DONE** (pre-existing)
 2. Update `plan.py` + `plan_tool.json` — add `Task.source_clause`, `require_document` (bool), `document_title` (nullable); keep `updated_at`/`document_url`/`user_id`/`llm_client` out of the payload. ✅ **DONE** (Phase 1)
 3. `errors.py` — `PlanGenerationError`, `RetryableError` (+LLM subclasses), `TerminalError`, `SegmentGenerationError`, `QueueEnqueueError`, `AuditLogWriteError`, `GenerationLimitError`. ✅ **DONE** (Phase 1)
-4. `process_repository.py` — `PlanJobTable` (+ `findings_snapshot`, `pre_diagnosis_snapshot`, `source_updated_at`, `consultant_id`, `completed_count`), `AuditLogLlmTable`, job CRUD, `insert_audit_log_llm`, task-patch repo method. ✅ **DONE** (Phase 2: job CRUD + ownership-verified claim guard. Phase 3: `create_plan_job` → atomic dialect-aware upsert [M1], `fail_job` accepts `queued|running` [C1 fix], `get_finding` maps `updated_at`. Phase 4: `claim_job` lease reclaim [decision 19], `requeue_job` [bumps `failed_attempts`], `get_company_name`, `fail_job(error: JobErrorCode)`. Task-patch repo method still pending for Phase 6.)
+4. `process_repository.py` — `PlanJobTable` (+ `findings_snapshot`, `pre_diagnosis_snapshot`, `source_updated_at`, `consultant_id`, `completed_count`), `AuditLogLlmTable`, job CRUD, `insert_audit_log_llm`, task-patch repo method. ✅ **DONE** (Phase 2: job CRUD + ownership-verified claim guard. Phase 3: `create_plan_job` → atomic dialect-aware upsert [M1], `fail_job` accepts `queued|running` [C1 fix], `get_finding` maps `updated_at`. Phase 4: `claim_job` lease reclaim [decision 19], `requeue_job` [bumps `failed_attempts`], `get_company_name`, `fail_job(error: JobErrorCode)`. Phase 6: `patch_task` repo method + `PlanTable.updated_at` + `revision`.)
 5. `plan_generation.py` — snapshot-based split, claim guard, resumable worker, `asyncio.gather`+Semaphore+tenacity, per-segment status checkpoint, in-code merge (title dedupe + summary join), atomic `replace_plan`, `completed_count+1`, logs + audit. ✅ **DONE** (Phase 4 — `src/services/plan_generation.py`: `generate` orchestration + `_process_segment` fan-out + `_merge`; worker delegates.)
 6. `llm_port.py` + `anthropic_adapter.py` — segment generation (`max_tokens≈1500`, timeout), labelled Q&A via map `.format()`, typed errors, return usage/latency/correlation. ✅ **DONE** (Phase 4 — `SegmentResult` dataclass + `generate_segment` with typed error mapping + usage/latency return; `_tasks_from_input` wires `require_document`/`document_title`.)
-7. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`. ✅ **DONE** (Phase 3 — async enqueue `202` + status endpoint + `GET /plan` new task fields; `PUT /plan/tasks/{task_id}` deferred to Phase 6)
+7. `routes.py` — enqueue `POST` (snapshot + cap→429 + idempotent 202), `GET /plan-generation/status`, `GET /plan` (200/404), `PUT /plan/tasks/{task_id}`. ✅ **DONE** (Phase 3 — async enqueue `202` + status endpoint + `GET /plan` new task fields. Phase 6 — `PUT /{process_id}/plan/tasks/{task_id}` with 404/409/400 paths, `UpdateTaskRequest`.)
 8. `main.py` — new-path exception handlers (503/400/429/409). ✅ **DONE** (Phase 3 — 503/400/429 registered; 409 deferred with Phase 6 edit-task conflict)
 9. `handler.py` — `aws:sqs` branch → worker; atomic claim; partial-batch response. ✅ **DONE** (Phase 2 `aws:sqs` branch + partial-batch response; Phase 4 worker delegates to `plan_generation.generate` — retryable → redelivery, terminal → delete.)
 10. Terraform — SQS + DLQ + event source mapping, SQS IAM, `PLAN_GENERATION_QUEUE_URL`, CloudWatch alarm (DLQ) → SNS. ✅ **DONE** (Phase 5 Stage B — `infra/modules/backend/`: SQS queue + DLQ + redrive, queue resource policy, `lambda_sqs` IAM, event-source mapping [disabled by default → go-live switch], SNS topic + email sub, CloudWatch DLQ alarm; `terraform validate` clean.)
 11. Frontend — generate loader (hard-stopper on edits during run + block double-click); poll status; in-app completion toast; edit-task view wired to `PUT`. ⬜ not started (synchronous generate only today)
-12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 5 Stage A** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`) + Phase 5 Stage A (`test_anthropic_adapter.py` 4xx→terminal mapping, `test_routes.py` non-string answer rejection, `test_plan_job.py` lease-guarded checkpoint) + Tier-1 failure-path (`TestRetryLadder`: retryable-recovers-on-redelivery, retryable-exhausts-cap-and-fails, retryable-cap-yields-partial-plan, completed-job-skipped-on-duplicate-redelivery). Remaining: edit-task ownership (Phase 6), real-stack retry→DLQ smoke (Phase 5 Stage C).
+12. Tests — segmentation, resume-only-failed, retry→DLQ, terminal fail-fast, merge/dedupe, atomic persist, status transitions, snapshot-consistency, duplicate-claim, cap (only `completed`), audit writes, route mapping, edit-task ownership; gates: `make lint`, `ruff`, `pytest`. ✅ **DONE through Phase 6** — Phase 0–3 suites + Phase 4 (`test_plan_generation.py` fan-out/merge/partial/all-fail/retryable-requeue/checkpoint-resume/merge-dedupe, lease reclaim, `generate_segment` error mapping, `build_certification_goal`) + Phase 5 Stage A (`test_anthropic_adapter.py` 4xx→terminal mapping, `test_routes.py` non-string answer rejection, `test_plan_job.py` lease-guarded checkpoint) + Tier-1 failure-path (`TestRetryLadder`: retryable-recovers-on-redelivery, retryable-exhausts-cap-and-fails, retryable-cap-yields-partial-plan, completed-job-skipped-on-duplicate-redelivery) + Phase 6 (15 backend tests: `test_patch_task.py` 8 repo tests, `test_update_task_routes.py` 7 route tests; 11 frontend tests: `PlanResultView` inline edit + `useUpdateTask` hook). Remaining: real-stack enqueue smoke (Phase 5 Stage C), real-stack retry→DLQ smoke (Phase 5 Stage C).
 
 ---
 
@@ -492,49 +492,30 @@ Extended `infra/modules/backend/` (no new module): `plan_generation` SQS queue (
 
 `retryable-recovers-on-redelivery-resume`, `retryable-exhausts-cap-and-fails`, `retryable-cap-yields-partial-plan`, `completed-job-skipped-on-duplicate-redelivery` — free/CI-able (fake LLM + SQLite + `fast_retries` to neutralize tenacity backoff). Confirm the retry ladder (tenacity → `requeue_job` → checkpoint resume → terminal) and idempotency without AWS.
 
-### ⚠️ BLOCKING BUG — asyncio event-loop in Lambda (found in Phase 5 Stage C smoke test)
+### ✅ FIXED — asyncio event-loop in Lambda (Phase 5 Stage C blocker — fixed 2026-09-21)
 
-The go-live smoke test (2026-09-21) surfaced a **pre-existing production bug** that blocks Stage C. **Detour: fix in a dedicated session.**
+The go-live smoke test (2026-09-21) surfaced a **pre-existing production bug** that blocked Stage C. **Fixed and deployed 2026-09-21** (commit `543d1bc`).
 
-**Symptom (live stack):**
+**Symptom (live stack — now fixed):**
 - `GET /processes/{id}/plan-generation/status` → `502 {"message":"Internal server error"}`.
 - Worker fails to process the SQS record → job stays `queued`, 0 `audit_logs_llm` rows → message redelivers and will DLQ after ~4 attempts.
 
-**Two distinct errors** (CloudWatch log group `/aws/lambda/cert-app-dev-api`):
+**Two distinct errors** (CloudWatch log group `/aws/lambda/cert-app-dev-api` — now resolved):
 
-1. **HTTP path (Mangum)** — `RuntimeError: There is no current event loop in thread 'MainThread'`
-   ```
-   File "/var/task/handler.py", line 22, in handler
-     return _mangum(event, context)
-   File "/var/task/mangum/adapter.py", line 75, in __call__
-     lifespan_cycle = LifespanCycle(self.app, self.lifespan)
-   File "/var/task/mangum/protocols/lifespan.py", line 62, in __init__
-     self.loop = asyncio.get_event_loop()
-   ```
-   **Cause:** Mangum's `LifespanCycle` calls the deprecated `asyncio.get_event_loop()`, which **raises** on Python 3.12 (no auto-loop creation). The Lambda handler runs with no running loop.
+1. **HTTP path (Mangum)** — `RuntimeError: There is no current event loop in thread 'MainThread'` — fixed by giving the HTTP branch a current loop (`asyncio.new_event_loop()` + `set_event_loop()` around `_mangum`).
+2. **Worker path (SQS)** — `Task … got Future … attached to a different loop` — fixed by using `poolclass=NullPool` in `get_engine()` so asyncpg connections aren't cached on a stale loop.
 
-2. **Worker path (SQS)** — `Task … got Future … attached to a different loop`
-   ```
-   Failed to process SQS record …: Task <Task … handle_sqs_event()> got Future … attached to a different loop
-   ```
-   **Cause:** `get_engine()` (`src/adapters/db/user_repository.py:52`) caches a **global `_engine` singleton**; its asyncpg pool binds to the first event loop it's used on. `handler.py:21` calls `asyncio.run(handle_sqs_event(event))` per SQS record — a **fresh loop** each time — so the cached pool's connections sit on a stale (closed) loop.
+**Fix commits:** `543d1bc` (asyncio fix) + `2883dfa` (Phase 6).
 
-**Where:**
-- `backend/handler.py` (Mangum wiring + `asyncio.run` for the SQS branch).
-- `backend/src/adapters/db/user_repository.py` `get_engine()` (global singleton engine).
-- Lambda runtime `python3.12` (confirm via `aws lambda get-function-configuration --function-name cert-app-dev-api`).
+**Stage C is now unblocked** — real-stack smoke can proceed:
+1. Enqueue smoke: `POST /processes/{id}/generate-plan` → 202 → worker processes → `GET /plan` returns plan.
+2. Retry→DLQ smoke: poison message → redrive → DLQ → CloudWatch alarm → SNS email.
 
-**Proposed fix (two parts):**
-1. HTTP — give the non-SQS branch a current loop (`asyncio.new_event_loop()` + `set_event_loop()` around `_mangum(event, context)`), or pin/upgrade Mangum to a Python-3.12-safe version.
-2. Worker — stop sharing the global engine across loops: `poolclass=NullPool` (or build a fresh engine per invocation) so asyncpg connections aren't cached on a stale loop.
-
-**Reproduction:** on the live stack, `POST /processes/{id}/generate-plan` → 202, then poll `GET /plan-generation/status` → 502; both errors appear in CloudWatch. The local suite (SQLite + fake LLM) **cannot** reproduce — SQLite has no loop-bound pool and Mangum/Lambda never run locally.
-
-**Why it slipped:** local tests use SQLite (no asyncpg loop binding) and never exercise Mangum/Lambda; the Python 3.12 `get_event_loop()` regression post-dates the last successful manual smoke test.
-
-### Verification gates (as of 2026-09-19)
+### Verification gates (as of 2026-09-21 after Phase 6)
 
 - `ruff check .`: clean.
-- `pytest`: **308 passed**.
+- `pytest`: **325 passed** (15 new Phase 6 tests).
+- `pnpm --dir frontend lint`: clean.
+- `pnpm --dir frontend build`: clean.
 
-Status: Phase 0–5 Stage A+B complete (backend M1/M2/M3 fixes + Terraform applied + `terraform validate` clean + Tier-1 failure-path tests). **Stage C is BLOCKED by a pre-existing asyncio event-loop bug in the Lambda** (see "⚠️ BLOCKING BUG" above) — the go-live smoke revealed a 502 on the HTTP path and a "different loop" error on the worker path. Fix in a dedicated session, then re-run the Stage C smoke (enqueue → plan via `GET /plan`; poison message → DLQ → alarm email). Frontend loader/poller (Phase 6) still pending.
+Status: Phase 0–6 complete. **Asyncio bug fixed and deployed** (`543d1bc`). **Stage C unblocked** — two real-stack smoke tests remain: (1) enqueue → plan via `GET /plan`; (2) poison message → DLQ → CloudWatch alarm → SNS email. **Frontend async loader still pending** (Phase 7 item 11 — hard-stop edits during run, poll status, completion toast, `PUT` wired to inline edit).
