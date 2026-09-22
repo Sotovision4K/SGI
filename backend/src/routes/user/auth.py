@@ -5,14 +5,15 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.adapters.auth.cognito import CognitoAdapter
 from src.adapters.auth.cognito_port import CognitoPort
-from src.config.settings import SettingsDep
+from src.config.settings import get_settings
 from jwt import InvalidTokenError, ExpiredSignatureError, DecodeError, MissingRequiredClaimError
 
 security = HTTPBearer()
 
 @lru_cache()
-def get_cognito_adapter(settings: SettingsDep) -> CognitoPort:
-    """Create and return a CognitoAdapter instance with settings from config."""
+def get_cognito_adapter() -> CognitoPort:
+    """Create and return a cached CognitoAdapter instance with settings from config."""
+    settings = get_settings()
     return CognitoAdapter(
         jwks_url=settings.aws_cognito_jwks_url,
         client_id=settings.aws_cognito_client_id,
