@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getFindings,
+  getPlan,
   saveFindings,
   generatePlan,
   updateTask,
@@ -69,7 +70,7 @@ export function useUpdateTask(processId: string) {
 
 export function usePlan(processId: string | null) {
   const { getToken } = useApiAuthBridge();
-  return useQuery<Plan>({
+  return useQuery<Plan | null>({
     queryKey: ['plan', processId],
     queryFn: ({ signal }) => getPlan(processId!, { token: getToken(), signal }),
     enabled: !!processId,

@@ -129,7 +129,7 @@ export const ProcessDetailPage = () => {
             Evalúa el estado actual de tu empresa frente a los requisitos ISO.
           </p>
           <Link
-            to={`/processes/new?processId=${processId}`}
+            to={hasPlan ? `/processes/${processId}/plan` : `/processes/new?processId=${processId}`}
             className="w-full py-2 px-4 bg-app-primary text-white rounded-lg font-medium hover:bg-app-primary/90 transition-colors text-center"
           >
             {ctaLabel}

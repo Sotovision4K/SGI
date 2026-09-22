@@ -20,6 +20,7 @@ const DiagnosePage = lazy(() => import('./pages/process/DiagnosePage').then(m =>
 const DocumentsPage = lazy(() => import('./pages/process/DocumentsPage').then(m => ({ default: m.DocumentsPage })));
 const AuditsPage = lazy(() => import('./pages/process/AuditsPage').then(m => ({ default: m.AuditsPage })));
 const IndicatorsPage = lazy(() => import('./pages/process/IndicatorsPage').then(m => ({ default: m.IndicatorsPage })));
+const PlanPage = lazy(() => import('./pages/process/PlanPage').then(m => ({ default: m.PlanPage })));
 const NewProcessWizardPage = lazy(() => import('./pages/process/NewProcessWizardPage').then(m => ({ default: m.NewProcessWizardPage })));
 const AppLayout = lazy(() => import('./components/layout/AppLayout').then(m => ({ default: m.AppLayout })));
 const CompaniesPage = lazy(() => import('./pages/app/CompaniesPage').then(m => ({ default: m.CompaniesPage })));
@@ -55,6 +56,7 @@ function App() {
                   <Route path="/processes/:processId/documents" element={<DocumentsPage />} />
                   <Route path="/processes/:processId/audits" element={<AuditsPage />} />
                   <Route path="/processes/:processId/indicators" element={<IndicatorsPage />} />
+                  <Route path="/processes/:processId/plan" element={<PlanPage />} />
                   <Route path="/companies" element={<CompaniesPage />} />
                   <Route path="/audits" element={<AuditsOverviewPage />} />
                   <Route path="/reports" element={<ReportsPage />} />

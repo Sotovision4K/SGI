@@ -229,6 +229,7 @@ function TaskCard({
   defaultExpanded,
   processId,
   isEditing,
+  readOnly,
   onEditStart,
   onEditEnd,
 }: {
@@ -236,6 +237,7 @@ function TaskCard({
   defaultExpanded: boolean;
   processId: string;
   isEditing: boolean;
+  readOnly: boolean;
   onEditStart: (taskId: string) => void;
   onEditEnd: () => void;
 }) {
@@ -280,15 +282,17 @@ function TaskCard({
             <ChevronDown className="flex-shrink-0 w-4 h-4 text-app-muted" />
           )}
         </button>
-        <button
-          type="button"
-          onClick={() => onEditStart(task.id)}
-          aria-label="Editar tarea"
-          title="Editar tarea"
-          className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-app-muted hover:text-app-accent hover:bg-app-accent/10 transition-colors"
-        >
-          <Pencil className="w-4 h-4" />
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            onClick={() => onEditStart(task.id)}
+            aria-label="Editar tarea"
+            title="Editar tarea"
+            className="flex-shrink-0 inline-flex items-center justify-center w-8 h-8 rounded-lg text-app-muted hover:text-app-accent hover:bg-app-accent/10 transition-colors"
+          >
+            <Pencil className="w-4 h-4" />
+          </button>
+        )}
       </div>
       {expanded && (
         <div className="px-4 pb-4 pt-2 border-t border-app-border bg-app-bg space-y-2">
@@ -321,7 +325,7 @@ function TaskCard({
   );
 }
 
-export function PlanResultView({ plan }: { plan: Plan }) {
+export function PlanResultView({ plan, readOnly = false }: { plan: Plan; readOnly?: boolean }) {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const sortedTasks = [...plan.tasks].sort((a, b) => a.sort_order - b.sort_order);
 
@@ -366,7 +370,8 @@ export function PlanResultView({ plan }: { plan: Plan }) {
               task={task}
               defaultExpanded={idx < 3}
               processId={plan.process_id}
-              isEditing={editingTaskId === task.id}
+              isEditing={editingTaskId === task.id && !readOnly}
+              readOnly={readOnly}
               onEditStart={setEditingTaskId}
               onEditEnd={() => setEditingTaskId(null)}
             />

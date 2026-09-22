@@ -67,11 +67,22 @@ export async function saveFindings(
   });
 }
 
+function isApiError(err: unknown): err is { status: number } {
+  return typeof err === 'object' && err !== null && 'status' in err;
+}
+
 export async function getPlan(
   processId: string,
   { token, signal }: ApiCallOptions,
-): Promise<Plan> {
-  return apiRequest<Plan>(`/processes/${processId}/plan`, { token, signal });
+): Promise<Plan | null> {
+  try {
+    return await apiRequest<Plan>(`/processes/${processId}/plan`, { token, signal });
+  } catch (err) {
+    if (isApiError(err) && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function generatePlan(

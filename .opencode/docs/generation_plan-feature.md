@@ -507,24 +507,7 @@ The go-live smoke test (2026-09-21) surfaced a **pre-existing production bug** t
 
 **Fix commits:** `543d1bc` (asyncio fix) + `2883dfa` (Phase 6).
 
-**Stage C is now unblocked** — real-stack smoke can proceed:
-1. Enqueue smoke: `POST /processes/{id}/generate-plan` → 202 → worker processes → `GET /plan` returns plan.
-2. Retry→DLQ smoke: poison message → redrive → DLQ → CloudWatch alarm → SNS email.
-
-### Phase 5 — Stage C completed (2026-09-21)
-
-Stage C smoke confirmed the pipeline works end-to-end (3 bugs surfaced + fixed — see "Stage C smoke test #1" below). **Stage C is now unblocked.**
-
-### Alembic migration setup (2026-09-22)
-
-Schema bootstrap moved out of `lifespan` into Alembic (brownfield-safe):
-
-- `backend/alembic/` — SQLModel-aware async env, `001_initial` baseline (all 9 tables, idempotent `CREATE TABLE IF NOT EXISTS / ALTER TABLE IF NOT EXISTS`).
-- `backend/scripts/stamp_head.py` — one-time stamp for existing DBs (`uv run python -m backend.scripts.stamp_head`).
-- CI: `alembic stamp 001_initial && alembic upgrade head` runs after each `lambda update-function-code`.
-- Lifespan: `SELECT 1` only — no `create_all`, no schema DDL on cold start.
-
-**Cold-start impact:** Lambda Init drops from ~3.5s to ~0.5–1s.
+**Stage C completed** — pipeline confirmed working end-to-end (see "Stage C smoke test #1" below). Poison-message → DLQ → CloudWatch alarm test still pending (item #3 in the feature status table).
 
 ### Phase 7 — frontend async loader (completed 2026-09-21)
 
@@ -552,11 +535,33 @@ Three bugs surfaced and were fixed:
 
 **New tool** `.opencode/tools/plan-generation-smoke.ts` — end-to-end smoke (auth → enqueue → poll → fetch/validate → diagnostics) that loads the repo-root `.env`; flags `empty-tasks` / `stuck-running` / `job-failed`.
 
-### Verification gates (as of 2026-09-21 after Stage C fixes)
+### Alembic migration setup (2026-09-22)
+
+Schema bootstrap moved out of `lifespan` into Alembic (brownfield-safe):
+
+- `backend/alembic/` — SQLModel-aware async env, `001_initial` baseline (all 9 tables, idempotent `CREATE TABLE IF NOT EXISTS / ALTER TABLE IF NOT EXISTS`).
+- `backend/scripts/stamp_head.py` — one-time stamp for existing DBs (`uv run python -m backend.scripts.stamp_head`).
+- CI: `alembic stamp 001_initial && alembic upgrade head` runs after each `lambda update-function-code`.
+- Lifespan: `SELECT 1` only — no `create_all`, no schema DDL on cold start.
+
+**Cold-start impact:** Lambda Init drops from ~3.5s to ~0.5–1s.
+
+### Verification gates (as of 2026-09-22 after Alembic setup)
 
 - `ruff check .`: clean.
 - `pytest` (affected): **52 passed** (`test_anthropic_adapter`, `test_plan_generation`, `test_process_e2e`).
 - `terraform validate` (`infra/environments/dev`): clean.
 - `pnpm --dir frontend lint` / `build`: clean (Phase 7, unchanged).
 
-Status: Phase 0–7 complete + **Stage C smoke #1 run** (3 bugs found, all fixed in code). **Remaining to call the feature done:** (1) deploy the fixes — `terraform apply` (Lambda timeout 120→600, visibility 300→900) + backend code push, (2) re-run smoke #1 to confirm non-empty tasks, (3) run smoke #2 (poison message → DLQ → CloudWatch alarm → SNS email). **"Reintentar" (manual retry) deferred to Phase 8**; **Slack notification deferred**; **segment `max_tokens=4096` is a stopgap pending latency-budget review** (see `technical_debt.md`).
+### Feature status (2026-09-22)
+
+**Phase 0–7 complete.** Stage C smoke #1: bugs fixed (schema drift, empty tasks, Lambda timeout). Alembic migration setup complete (cold-start Init ~3.5s → ~0.5–1s).
+
+| # | Item | Status |
+|---|---|---|
+| 1 | Deploy Lambda timeout 120→600 / visibility 300→900 | Pending (Terraform apply) |
+| 2 | Re-run smoke #1 to confirm non-empty tasks | **Done** — 34 tasks generated (process `20593fc7…`, completed 2026-09-21 22:55:50) |
+| 3 | Smoke #2 — poison message → DLQ → CloudWatch alarm → SNS email | Pending |
+| 4 | Phase 8: "Reintentar" (manual retry button) | Deferred |
+| 5 | Slack notification on completion | Deferred |
+| 6 | TD-1: `max_tokens=4096` latency-budget review | Deferred (`technical_debt.md`) |

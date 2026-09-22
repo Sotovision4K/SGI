@@ -15,6 +15,7 @@ import type { UseMutationResult } from '@tanstack/react-query';
 // ── Mocks ──────────────────────────────────────────────────────────────────
 const mockGetToken = vi.fn(() => 'test-token');
 const mockGetFindings = vi.fn();
+const mockGetPlan = vi.fn();
 const mockSaveFindings = vi.fn();
 const mockGeneratePlan = vi.fn();
 const mockUpdateTask = vi.fn();
@@ -34,13 +35,14 @@ vi.mock('../components/ui/toast', () => ({
 
 vi.mock('../api/plan', () => ({
   getFindings: (...a: unknown[]) => mockGetFindings(...a),
+  getPlan: (...a: unknown[]) => mockGetPlan(...a),
   saveFindings: (...a: unknown[]) => mockSaveFindings(...a),
   generatePlan: (...a: unknown[]) => mockGeneratePlan(...a),
   updateTask: (...a: unknown[]) => mockUpdateTask(...a),
 }));
 
-import { useUpdateTask } from './usePlan';
-import type { PlanTask } from '../api/plan';
+import { useUpdateTask, usePlan } from './usePlan';
+import type { Plan, PlanTask } from '../api/plan';
 
 const UPDATED_TASK: PlanTask = {
   id: 'task-1',
@@ -53,6 +55,13 @@ const UPDATED_TASK: PlanTask = {
   source_clause: 'ISO 9001 - 5.2',
   require_document: true,
   document_title: 'Política de calidad',
+};
+
+const PLAN: Plan = {
+  process_id: 'proc-1',
+  summary_md: 'Resumen',
+  generated_at: '2026-01-01T00:00:00Z',
+  tasks: [UPDATED_TASK],
 };
 
 function Harness({
@@ -88,6 +97,7 @@ function renderWithClient(client: QueryClient, ui: ReactNode) {
 describe('useUpdateTask', () => {
   beforeEach(() => {
     mockGetFindings.mockReset();
+    mockGetPlan.mockReset();
     mockSaveFindings.mockReset();
     mockGeneratePlan.mockReset();
     mockUpdateTask.mockReset();
@@ -138,5 +148,57 @@ describe('useUpdateTask', () => {
       'Error interno del servidor. Contacta al administrador.',
       { title: 'Error' },
     );
+  });
+});
+
+// ── usePlan query hook (regression guard for the missing getPlan import) ─────
+
+function PlanQueryHarness({
+  processId,
+  onData,
+}: {
+  processId: string;
+  onData: (d: Plan | null | undefined) => void;
+}) {
+  const { data } = usePlan(processId);
+  useEffect(() => {
+    onData(data);
+  }, [data, onData]);
+  return null;
+}
+
+describe('usePlan', () => {
+  it('fetches the plan via getPlan and resolves the data', async () => {
+    const client = makeClient();
+    mockGetPlan.mockResolvedValue(PLAN);
+    const seen: (Plan | null | undefined)[] = [];
+
+    renderWithClient(
+      client,
+      <PlanQueryHarness processId="proc-1" onData={(d) => seen.push(d)} />,
+    );
+
+    await waitFor(() => {
+      expect(seen).toContain(PLAN);
+    });
+    expect(mockGetPlan).toHaveBeenCalledWith(
+      'proc-1',
+      expect.objectContaining({ token: 'test-token' }),
+    );
+  });
+
+  it('passes through a null result (no plan / 404)', async () => {
+    const client = makeClient();
+    mockGetPlan.mockResolvedValue(null);
+    const seen: (Plan | null | undefined)[] = [];
+
+    renderWithClient(
+      client,
+      <PlanQueryHarness processId="proc-1" onData={(d) => seen.push(d)} />,
+    );
+
+    await waitFor(() => {
+      expect(seen).toContain(null);
+    });
   });
 });

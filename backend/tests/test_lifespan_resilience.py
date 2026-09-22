@@ -5,11 +5,9 @@ Covers:
 2. Health endpoint returns 200 when env vars are MISSING
 3. Health endpoint returns 200 when DB is UNREACHABLE
 4. DB-dependent endpoint fails gracefully when DB is down
-5. Lifespan initializes DB successfully (SELECT 1 + create_all + logging)
+5. Lifespan reaches DB successfully (SELECT 1 ping; schema moved to Alembic)
 """
 
-import asyncio
-import inspect
 import logging
 import sys
 import uuid
@@ -203,8 +201,8 @@ def test_health_returns_200_when_db_unreachable(valid_env, caplog):
     # Lifespan must log the DB failure
     error_messages = [r.message for r in caplog.records if r.levelno >= logging.ERROR]
     assert any(
-        "Database initialization failed" in msg for msg in error_messages
-    ), f"Expected 'Database initialization failed' in error logs, got: {error_messages}"
+        "Database unreachable" in msg for msg in error_messages
+    ), f"Expected 'Database unreachable' in error logs, got: {error_messages}"
 
 
 # ---------------------------------------------------------------------------
@@ -258,74 +256,3 @@ def test_db_endpoint_fails_gracefully_when_db_unreachable(valid_env):
         f"{response.text[:300]}"
     )
 
-
-# ---------------------------------------------------------------------------
-# Test 5 — Lifespan initializes DB successfully (unit-style verification)
-# ---------------------------------------------------------------------------
-
-
-def test_lifespan_initializes_db_successfully(valid_env, caplog):
-    """Verify lifespan calls SELECT 1, create_all, and logs success.
-
-    Uses the same pattern as the existing test_lifespan_calls_create_all
-    in test_main.py: a tracked async connection records the lambdas passed
-    to ``run_sync``, and we inspect their source code to confirm the
-    correct operations are wired in.
-    """
-    caplog.set_level(logging.INFO)
-
-    run_sync_calls: list = []
-
-    class _TrackedConn:
-        """Async connection fake that records run_sync calls WITHOUT executing
-        the lambdas (to avoid needing a full SQLAlchemy connection mock)."""
-
-        async def run_sync(self, fn):
-            run_sync_calls.append(fn)
-            # Intentionally do NOT call fn(...) — executing create_all on
-            # a bare object would fail with _run_ddl_visitor missing.
-            # We only need to verify the lambdas exist and contain the
-            # right references.
-
-        async def close(self):
-            pass
-
-    mock_conn = _TrackedConn()
-    # Use AsyncMock so __aenter__/__aexit__ are properly awaitable
-    mock_ctx = AsyncMock()
-    mock_ctx.__aenter__.return_value = mock_conn
-    mock_engine = MagicMock()
-    mock_engine.begin.return_value = mock_ctx
-
-    with patch("src.main.get_engine", return_value=mock_engine):
-        from src.main import lifespan, app
-
-        async def _run_lifespan():
-            async with lifespan(app):
-                pass
-
-        asyncio.run(_run_lifespan())
-
-    # --- Assertions ---
-
-    # 1. engine.begin() must be called at least twice: SELECT 1 + create_all
-    assert mock_engine.begin.call_count >= 2, (
-        f"Expected >= 2 calls to engine.begin(), got {mock_engine.begin.call_count}"
-    )
-
-    # 2. Two run_sync lambdas must have been registered
-    assert len(run_sync_calls) == 2, (
-        f"Expected 2 run_sync calls, got {len(run_sync_calls)}"
-    )
-
-    # 3. The second lambda must reference SQLModel.metadata.create_all
-    source_second = inspect.getsource(run_sync_calls[1])
-    assert "create_all" in source_second, (
-        f"Second run_sync should call metadata.create_all. Source: {source_second}"
-    )
-
-    # 4. "Database initialized successfully" must be logged
-    info_messages = [r.message for r in caplog.records if r.levelno >= logging.INFO]
-    assert any(
-        "Database initialized successfully" in msg for msg in info_messages
-    ), f"Expected 'Database initialized successfully' in info logs, got: {info_messages}"

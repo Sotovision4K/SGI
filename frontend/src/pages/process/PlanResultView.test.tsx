@@ -3,6 +3,7 @@
  *
  * Verifies:
  *  - Read-only rendering intact; each card has an edit affordance ("Editar tarea")
+ *  - readOnly prop hides every edit affordance while tasks still render
  *  - Edit mode shows a form prefilled with the task values
  *  - Save sends only the changed fields via useUpdateTask
  *  - Toggling require_document off sends require_document:false + document_title:null
@@ -170,5 +171,14 @@ describe('PlanResultView — inline task editing', () => {
     expect(screen.getByText('El título es obligatorio')).toBeInTheDocument();
     // Still in edit mode
     expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
+  });
+});
+
+describe('PlanResultView — readOnly mode', () => {
+  it('shows the task titles but no edit buttons when readOnly is true', () => {
+    render(<PlanResultView plan={PLAN} readOnly />);
+    expect(screen.getByText('Revisar política de calidad')).toBeInTheDocument();
+    expect(screen.getByText('Capacitar al personal')).toBeInTheDocument();
+    expect(screen.queryAllByRole('button', { name: 'Editar tarea' })).toHaveLength(0);
   });
 });
