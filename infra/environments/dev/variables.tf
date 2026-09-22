@@ -19,5 +19,5 @@ variable "alert_email" {
 variable "plan_generation_mapping_enabled" {
   description = "Enable the SQS event-source mapping for the plan generation worker (go-live switch)"
   type        = bool
-  default     = false
+  default     = true
 }

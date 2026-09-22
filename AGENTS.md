@@ -96,14 +96,15 @@ Quick context:
 - Stack: AWS us-east-1, single `dev` environment, CloudFront default domain
 - Backend: Lambda (via Mangum) + API Gateway (`authorization = "NONE"` today; in-code JWT validation in `get_current_user`)
 - Database: **Supabase Postgres (Free tier)** — replaced the original RDS/VPC plan; no VPC, no NAT, no private subnets
-- Schema: `SQLModel.metadata.create_all` in `lifespan` (migrate to Alembic before production; new columns need raw `ALTER TABLE` meanwhile)
+- Schema: **Alembic** (`backend/alembic/`) — `001_initial` baseline is idempotent (brownfield-safe); future changes use `alembic revision --autogenerate`. CI runs `alembic upgrade head` after each deploy. `lifespan` no longer runs schema DDL.
 - Secrets: GitHub Actions secrets → Lambda env vars on deploy (`DATABASE_URL`, `ANTHROPIC_API_KEY`, Cognito settings)
 - Terraform state: **local** (`infra/environments/dev/terraform.tfstate`) — S3 + DynamoDB backend still pending
 
 Current state: **deployment complete**. Pending hardening only: S3/DynamoDB state backend, Cognito Authorizer on API Gateway, OIDC in workflows (long-lived keys in use), action SHA pinning, `infra.yml`. See `DEPLOY_PLAN.md` for details.
 
 Key files to know about:
-- `backend/src/main.py` — FastAPI app, lifespan (`create_all`), configurable CORS (`CORS_ALLOW_ORIGINS`)
+- `backend/src/main.py` — FastAPI app, lifespan (DB reachability check only, no schema DDL), configurable CORS (`CORS_ALLOW_ORIGINS`)
+- `backend/alembic/` — Alembic migration setup; `001_initial` is the baseline (idempotent, safe to stamp on live DB); `scripts/stamp_head.py` for one-time brownfield stamp
 - `backend/handler.py` — Mangum wrapper for Lambda
 - `backend/trigger_handler.py` — Cognito Post-Confirmation trigger entrypoint
 - `backend/src/config/settings.py` — Pydantic settings, reads from env

@@ -187,6 +187,10 @@ function summarizeSegments(
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+function result(obj: unknown): { output: string } {
+  return { output: JSON.stringify(obj, null, 2) }
+}
+
 export default tool({
   description:
     "End-to-end plan-generation smoke test: authenticate against Cognito, enqueue generate-plan, poll job status, then fetch and validate the plan. Reads credentials from env or a repo-root .env.",
@@ -205,7 +209,7 @@ export default tool({
 
     const processId = (args.processId ?? "").trim()
     if (!processId) {
-      return { error: "processId is required" }
+      return result({ error: "processId is required" })
     }
 
     let baseUrl: string
@@ -214,7 +218,7 @@ export default tool({
       baseUrl = resolveBaseUrl(args.baseUrl)
       accessToken = await resolveAccessToken()
     } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) }
+      return result({ error: err instanceof Error ? err.message : String(err) })
     }
 
     const headers = {
@@ -240,13 +244,13 @@ export default tool({
             : enq.status === 503
               ? "queue unavailable"
               : undefined
-      return {
+      return result({
         step: "enqueue",
         status: enq.status,
         expected: 202,
         body: enqBody,
         hint,
-      }
+      })
     }
 
     // ── 2. Poll status ───────────────────────────────────────────────────────
@@ -289,7 +293,7 @@ export default tool({
       )
     }
 
-    return {
+    return result({
       jobId: enqBody?.job_id,
       enqueueStatus: enq.status,
       finalStatus: final?.status ?? "still-running",
@@ -302,6 +306,6 @@ export default tool({
       },
       diagnostics,
       timeline,
-    }
+    })
   },
 })

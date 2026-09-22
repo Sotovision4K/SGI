@@ -1,5 +1,5 @@
 from typing import Annotated
-
+from functools import lru_cache
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -10,7 +10,7 @@ from jwt import InvalidTokenError, ExpiredSignatureError, DecodeError, MissingRe
 
 security = HTTPBearer()
 
-
+@lru_cache()
 def get_cognito_adapter(settings: SettingsDep) -> CognitoPort:
     """Create and return a CognitoAdapter instance with settings from config."""
     return CognitoAdapter(

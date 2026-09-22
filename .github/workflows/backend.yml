@@ -120,6 +120,18 @@ jobs:
       - name: Wait for Lambda update to propagate
         run: sleep 15
 
+      - name: Run Alembic migrations
+        run: |
+          set -euo pipefail
+
+          # DATABASE_URL is stored in SSM by Terraform (infra/modules/backend/main.tf)
+          SSM_PARAM="/cert-app/dev/DATABASE_URL"
+          DATABASE_URL=$(aws ssm get-parameter --name "$SSM_PARAM" \
+            --query 'Parameter.Value' --output text --with-decryption)
+          export DATABASE_URL
+
+          cd backend && uv run alembic stamp 001_initial && uv run alembic upgrade head
+
       - name: Smoke test /health endpoint
         run: |
           API_ID=$(aws apigateway get-rest-apis \

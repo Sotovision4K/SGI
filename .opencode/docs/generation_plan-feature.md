@@ -218,7 +218,7 @@ Canonical result JSON the LLM emits per task: `title`, `description`, `priority`
 6. **Observability**: structured logs + `audit_logs_llm` (sanitized payload + tokens + latency); audit failures never break generation.
 7. **Error taxonomy**: `RetryableError` vs `TerminalError` root; tool-not-emitted = retryable.
 8. **Same Lambda, reuse adapter** — no new infrastructure function; `_require_process_owner` stays at the API layer.
-9. **No migration** — new tables/columns via `create_all`.
+9. **No migration** — new tables/columns via `create_all`. ✅ **RESOLVED (2026-09-22)**: Alembic (`backend/alembic/`) replaces `create_all` in lifespan. `001_initial` is the baseline (idempotent, brownfield-safe); CI runs `alembic stamp 001_initial && alembic upgrade head` after each deploy. Lifespan no longer runs schema DDL.
 10. **OpenCode reusables**: `/adr` command added; future `/adr` command can compact any design session.
 11. **Consistency — snapshot at enqueue**: worker uses the `plan_jobs` snapshot (never the live DB).
 12. **Duplicate-safety — claim guard**: atomic `queued→running` via `UPDATE … WHERE status='queued' AND consultant_id=:cid`; duplicate/redelivered messages give up (no repeat token spend). Frontend loader also blocks double-clicks and edits while running.
@@ -510,6 +510,21 @@ The go-live smoke test (2026-09-21) surfaced a **pre-existing production bug** t
 **Stage C is now unblocked** — real-stack smoke can proceed:
 1. Enqueue smoke: `POST /processes/{id}/generate-plan` → 202 → worker processes → `GET /plan` returns plan.
 2. Retry→DLQ smoke: poison message → redrive → DLQ → CloudWatch alarm → SNS email.
+
+### Phase 5 — Stage C completed (2026-09-21)
+
+Stage C smoke confirmed the pipeline works end-to-end (3 bugs surfaced + fixed — see "Stage C smoke test #1" below). **Stage C is now unblocked.**
+
+### Alembic migration setup (2026-09-22)
+
+Schema bootstrap moved out of `lifespan` into Alembic (brownfield-safe):
+
+- `backend/alembic/` — SQLModel-aware async env, `001_initial` baseline (all 9 tables, idempotent `CREATE TABLE IF NOT EXISTS / ALTER TABLE IF NOT EXISTS`).
+- `backend/scripts/stamp_head.py` — one-time stamp for existing DBs (`uv run python -m backend.scripts.stamp_head`).
+- CI: `alembic stamp 001_initial && alembic upgrade head` runs after each `lambda update-function-code`.
+- Lifespan: `SELECT 1` only — no `create_all`, no schema DDL on cold start.
+
+**Cold-start impact:** Lambda Init drops from ~3.5s to ~0.5–1s.
 
 ### Phase 7 — frontend async loader (completed 2026-09-21)
 
