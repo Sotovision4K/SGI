@@ -327,7 +327,7 @@ function TaskCard({
 
 export function PlanResultView({ plan, readOnly = false }: { plan: Plan; readOnly?: boolean }) {
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
-  const sortedTasks = [...plan.tasks].sort((a, b) => a.sort_order - b.sort_order);
+  const sortedTasks = [...(plan.tasks ?? [])].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <div className="space-y-6">
