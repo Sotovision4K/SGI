@@ -7,7 +7,8 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 from sqlmodel import SQLModel
 
-from src.config.settings import get_settings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 from src.adapters.db.user_repository import UserTable, CompanyTable, ConsultantTable
 from src.adapters.db.process_repository import (
     ProcessTable,
@@ -26,9 +27,16 @@ if config.config_file_name is not None:
 target_metadata = SQLModel.metadata
 
 
+class _MigrationSettings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_file=".env", env_file_encoding="utf-8", extra="ignore"
+    )
+
+    database_url: str
+
+
 def get_url() -> str:
-    settings = get_settings()
-    return settings.database_url
+    return _MigrationSettings().database_url
 
 
 def run_migrations_offline() -> None:
