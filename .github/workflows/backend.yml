@@ -124,13 +124,13 @@ jobs:
         run: |
           set -euo pipefail
 
-          # DATABASE_URL is stored in SSM by Terraform (infra/modules/backend/main.tf)
-          SSM_PARAM="/cert-app/dev/DATABASE_URL"
-          DATABASE_URL=$(aws ssm get-parameter --name "$SSM_PARAM" \
-            --query 'Parameter.Value' --output text --with-decryption)
+          # DATABASE_URL is a Lambda env var set by Terraform (infra/modules/backend/main.tf)
+          DATABASE_URL=$(aws lambda get-function-configuration \
+            --function-name cert-app-dev-api \
+            --query 'Environment.Variables.DATABASE_URL' --output text)
           export DATABASE_URL
 
-          cd backend && uv run alembic stamp 001_initial && uv run alembic upgrade head
+          cd backend && uv run alembic stamp 001_initial --purge && uv run alembic upgrade head
 
       - name: Smoke test /health endpoint
         run: |
