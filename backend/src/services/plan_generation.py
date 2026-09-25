@@ -8,8 +8,11 @@ Flow (spec §3):
 2. split answers into 3 buckets (``questionnaire_map.json``)
 3. ``asyncio.gather`` the buckets with tenacity retry + per-call timeout
 4. checkpoint each bucket into ``plan_jobs.segments`` (heartbeat + resume)
-5. merge summaries + dedupe tasks (title) + re-stamp ``sort_order``
+5. merge segments (tasks only — no narrative summary) + dedupe tasks (title)
+   + re-stamp ``sort_order``
 6. ``replace_plan`` (partial allowed, decision 18) → ``complete_job``
+   → transition the process ``in_diagnosis`` → ``plan_ready`` (a COMPLETED
+   process is never downgraded)
 
 Retry ladder (spec §7, decision 19):
 - tenacity retries each segment in-process (transient LLM errors)
@@ -40,6 +43,7 @@ from src.adapters.llm.llm_port import LLMPort, SegmentResult
 from src.domain.entities.audit_log import AuditLogLLM, AuditLogStatus
 from src.domain.entities.plan import Plan, Task, TaskPriority
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
+from src.domain.entities.process import ProcessStatus
 from src.errors import JobErrorCode, LeaseLostError, RetryableError, TerminalError
 from src.services.prompt_builder import (
     build_bucket_prompt,
@@ -277,6 +281,12 @@ async def _generate(
         return
     await repo.complete_job(process_id)
 
+    # Plan persisted → the process moves to plan_ready. Guard so a COMPLETED
+    # process (e.g. a regeneration for an already-finished process) is never
+    # downgraded.
+    if process.status != ProcessStatus.COMPLETED:
+        await repo.update_process_status(process_id, ProcessStatus.PLAN_READY)
+
 
 async def _process_segment(
     *,
@@ -441,9 +451,13 @@ def _merge(
     segments: dict,
     bucket_clauses: dict[str, list[str]],
 ) -> Plan:
-    """Merge completed segments into one Plan (title-dedupe + sort re-stamp)."""
+    """Merge completed segments into one Plan (title-dedupe + sort re-stamp).
+
+    Planner contract: the plan is tasks-only — any ``summary`` keys inside the
+    segment checkpoints (e.g. legacy ones written before the planner change)
+    are ignored and ``summary_md`` is always ``""``.
+    """
     plan_id = uuid.uuid4()
-    summary_parts: list[str] = []
     seen: set[str] = set()
     merged_tasks: list[Task] = []
 
@@ -451,9 +465,6 @@ def _merge(
         seg = segments.get(bucket, {})
         if seg.get("status") != "completed":
             continue
-        if seg.get("summary"):
-            name = get_bucket_metadata(bucket).get("name", bucket)
-            summary_parts.append(f"## {name}\n\n{seg['summary']}")
 
         source_clause = ", ".join(bucket_clauses.get(bucket, []))
         for raw in seg.get("tasks", []):
@@ -467,7 +478,7 @@ def _merge(
     return Plan(
         id=plan_id,
         process_id=process_id,
-        summary_md="\n\n".join(summary_parts),
+        summary_md="",
         tasks=merged_tasks,
     )
 

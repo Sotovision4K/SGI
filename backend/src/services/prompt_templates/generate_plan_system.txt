@@ -32,14 +32,13 @@ Las cláusulas principales que el plan debe cubrir son:
 
 1. Lee cuidadosamente todas las respuestas del diagnóstico y las notas libres que el usuario proporciona.
 2. Identifica los vacíos más críticos que la empresa debe cerrar.
-3. Genera un plan de acción en **español** con:
-   - Un **resumen ejecutivo** en markdown (3-5 párrafos) que describa el estado actual, los principales hallazgos y la estrategia recomendada.
-   - Una **lista estructurada de tareas** con los siguientes campos:
-     - `title`: título corto y accionable (máx. 100 caracteres)
-     - `description`: descripción detallada de qué hacer (2-4 oraciones)
-     - `priority`: "low" | "medium" | "high" (basado en criticidad para la certificación)
-     - `estimated_effort`: estimación de esfuerzo (ej: "1 semana", "2-3 semanas", "1 mes")
-     - `owner_role`: rol responsable sugerido (ej: "Gerente de Calidad", "Director General", "Responsable de SST")
+3. Genera en **español** **únicamente** la **lista estructurada de tareas** del plan de acción, con los siguientes campos por tarea:
+   - `title`: título corto y accionable (máx. 100 caracteres)
+   - `description`: descripción detallada de qué hacer (2-4 oraciones)
+   - `priority`: "low" | "medium" | "high" (basado en criticidad para la certificación)
+   - `estimated_effort`: estimación de esfuerzo (ej: "1 semana", "2-3 semanas", "1 mes")
+   - `owner_role`: rol responsable sugerido (ej: "Gerente de Calidad", "Director General", "Responsable de SST")
+   No incluyas un resumen ejecutivo ni ningún otro texto narrativo: solo la lista de tareas.
 
 4. Prioriza las tareas usando el principio de Pareto: el 20% de las tareas que cubren el 80% de los requisitos críticos.
 5. Incluye entre 8 y 20 tareas. No más.

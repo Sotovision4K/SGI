@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
-from src.domain.entities.plan import Plan, Task
+from src.domain.entities.plan import Task
 
 
 @dataclass
@@ -24,9 +24,6 @@ class SegmentResult:
 
 @runtime_checkable
 class LLMPort(Protocol):
-    async def generate_plan(self, iso_standard: str, findings: dict, pre_diagnosis: dict | None = None) -> Plan:
-        ...
-
     async def generate_segment(
         self,
         system_prompt: str,

@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
 import {
   ChevronDown,
   ChevronUp,
@@ -12,36 +11,10 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import type { Plan, PlanTask, UpdateTaskInput } from '../../api/plan';
-import type { ComponentProps } from 'react';
 import { useUpdateTask } from '../../hooks/usePlan';
 import { Input } from '../../components/ui/Input';
 import { SelectNative } from '../../components/ui/Select';
 import { Button } from '../../components/ui/Button';
-
-function isSafeUrl(href: string): boolean {
-  try {
-    const url = new URL(href, window.location.origin);
-    return ['http:', 'https:', 'mailto:'].includes(url.protocol);
-  } catch {
-    return false;
-  }
-}
-
-function SafeLink({ href, children }: ComponentProps<'a'>) {
-  if (href && !isSafeUrl(href)) {
-    return <span className="text-app-muted line-through">{children}</span>;
-  }
-  return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-app-accent underline hover:opacity-80"
-    >
-      {children}
-    </a>
-  );
-}
 
 const PRIORITY_STYLES: Record<PlanTask['priority'], { bg: string; text: string; label: string; icon: typeof AlertTriangle }> = {
   high: { bg: 'bg-red-100', text: 'text-red-700', label: 'Alta', icon: AlertTriangle },
@@ -331,31 +304,6 @@ export function PlanResultView({ plan, readOnly = false }: { plan: Plan; readOnl
 
   return (
     <div className="space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-app-text mb-3">Resumen ejecutivo</h3>
-        <div className="prose prose-sm max-w-none text-app-text bg-app-bg rounded-lg p-4 border border-app-border">
-          {plan.summary_md ? (
-            <ReactMarkdown
-              components={{
-                h1: ({ children }) => <h1 className="text-xl font-bold mb-2 text-app-text">{children}</h1>,
-                h2: ({ children }) => <h2 className="text-lg font-semibold mt-4 mb-2 text-app-text">{children}</h2>,
-                h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-1 text-app-text">{children}</h3>,
-                p: ({ children }) => <p className="mb-2 leading-relaxed">{children}</p>,
-                ul: ({ children }) => <ul className="list-disc pl-5 mb-2 space-y-1">{children}</ul>,
-                ol: ({ children }) => <ol className="list-decimal pl-5 mb-2 space-y-1">{children}</ol>,
-                li: ({ children }) => <li>{children}</li>,
-                strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                a: SafeLink,
-              }}
-            >
-              {plan.summary_md}
-            </ReactMarkdown>
-          ) : (
-            <p className="text-app-muted italic">El LLM no generó un resumen.</p>
-          )}
-        </div>
-      </div>
-
       <div>
         <h3 className="text-lg font-semibold text-app-text mb-3">
           Plan de acción

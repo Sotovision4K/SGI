@@ -17,7 +17,7 @@ from src.adapters.db.process_repository import ProcessRepository
 from src.adapters.llm.llm_port import SegmentResult
 from src.domain.entities.plan import Task, TaskPriority
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
-from src.domain.entities.process import IsoStandard, Process
+from src.domain.entities.process import IsoStandard, Process, ProcessStatus
 from src.errors import (
     InvalidResponseError,
     JobErrorCode,
@@ -69,7 +69,9 @@ class FakeLLM:
             self.fail_times[bucket] = remaining - 1
             raise RateLimitError("transient rate limit")
         return SegmentResult(
-            summary_md=f"Resumen {bucket}",
+            # Planner contract: tasks only — the LLM no longer produces a
+            # narrative summary (summary_md stays "").
+            summary_md="",
             tasks=[
                 Task(
                     id=uuid.uuid4(),
@@ -156,7 +158,27 @@ class TestPlanGenerationPipeline:
             "Tarea Contexto y Apoyo",
             "Tarea Operación y Mejora",
         }
-        assert "Resumen Liderazgo" in plan.summary_md
+        # Planner: no narrative summary is merged into the plan.
+        assert plan.summary_md == ""
+
+        # Plan generated → the process transitions in_diagnosis → plan_ready.
+        process_after = await repo.get_process(process.id)
+        assert process_after is not None
+        assert process_after.status == ProcessStatus.PLAN_READY
+
+    @pytest.mark.asyncio
+    async def test_completed_process_is_not_downgraded(self, repo):
+        # Guard: a COMPLETED process must never be moved back to plan_ready
+        # by a (re)generated plan.
+        process, consultant_id = await _setup_job(repo)
+        await repo.update_process_status(process.id, ProcessStatus.COMPLETED)
+
+        llm = FakeLLM()
+        await plan_generation.generate(process.id, consultant_id, repo, llm, model="test")
+
+        process_after = await repo.get_process(process.id)
+        assert process_after is not None
+        assert process_after.status == ProcessStatus.COMPLETED
 
     @pytest.mark.asyncio
     async def test_partial_plan_when_segment_terminal_fails(self, repo):
@@ -421,7 +443,8 @@ class TestMerge:
         assert [t.title for t in plan.tasks] == ["Tarea A", "Tarea B", "Tarea C"]
         assert plan.tasks[0].source_clause == "5.1, 5.2"
         assert plan.tasks[2].source_clause == "4.1"
-        assert plan.summary_md == "## Liderazgo\n\ns1\n\n## Contexto y Apoyo\n\ns2"
+        # Planner: the merge ignores any legacy "summary" keys in segments.
+        assert plan.summary_md == ""
 
     def test_merge_skips_failed_and_empty(self):
         segments = {

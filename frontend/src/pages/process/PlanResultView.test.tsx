@@ -77,6 +77,14 @@ describe('PlanResultView — inline task editing', () => {
     expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
   });
 
+  it('renders only the task list — no executive summary section', () => {
+    render(<PlanResultView plan={PLAN} />);
+    expect(screen.queryByText('Resumen ejecutivo')).not.toBeInTheDocument();
+    expect(screen.queryByText('El LLM no generó un resumen.')).not.toBeInTheDocument();
+    // Task list section still present
+    expect(screen.getByText('Plan de acción')).toBeInTheDocument();
+  });
+
   it('opens an inline edit form prefilled with the task values', () => {
     render(<PlanResultView plan={PLAN} />);
     fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);

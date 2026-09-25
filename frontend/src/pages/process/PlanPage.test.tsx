@@ -2,7 +2,7 @@
  * Test: PlanPage — standalone read-only plan view
  *
  * Verifies:
- *  - Renders the plan: header title, company/ISO subtitle, back link, summary, tasks
+ *  - Renders the plan: header title, company/ISO subtitle, back link, tasks
  *  - Subtitle is hidden while the process data is not present
  *  - Loading state shows "Cargando plan..."
  *  - Error state shows ErrorState with the mapped message and a retry action
@@ -117,12 +117,13 @@ describe('PlanPage', () => {
     };
   });
 
-  it('renders the plan with header title, company subtitle, summary and task titles', () => {
+  it('renders the plan with header title, company subtitle and task titles', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Plan de acción', level: 1 })).toBeInTheDocument();
     expect(screen.getByText('Acme Inc · iso9001')).toBeInTheDocument();
-    expect(screen.getByText(/El plan prioriza controles documentales/)).toBeInTheDocument();
+    // The narrative summary is no longer rendered — the plan view shows only the task list
+    expect(screen.queryByText(/El plan prioriza controles documentales/)).not.toBeInTheDocument();
     expect(screen.getByText('Revisar política de calidad')).toBeInTheDocument();
     expect(screen.getByText('Capacitar al personal')).toBeInTheDocument();
     const backLink = screen.getByRole('link', { name: 'Volver al proceso' });

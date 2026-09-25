@@ -15,7 +15,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from alembic import context
 from alembic.config import Config
 from alembic.script import Script
 from alembic.runtime.migration import MigrationContext

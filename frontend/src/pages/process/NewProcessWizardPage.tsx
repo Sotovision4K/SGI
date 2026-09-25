@@ -1,21 +1,19 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
 import { WizardStepper } from './wizard/WizardStepper';
 import { StepSetup } from './wizard/StepSetup';
 import { StepPreDiagnosis, type StepPreDiagnosisHandle } from './wizard/StepPreDiagnosis';
 import { StepFindings, type StepFindingsHandle } from './wizard/StepFindings';
-import { PlanResultView } from './PlanResultView';
 import { toast } from '../../components/ui/toast';
 import { useProcess } from '../../hooks/useProcess';
-import { usePlan, useFindings } from '../../hooks/usePlan';
+import { useFindings } from '../../hooks/usePlan';
 import { loadDraft, saveDraft, clearDraft, formatLastSaved } from '../../lib/process-draft';
-import type { Plan } from '../../api/plan';
 
 type ISOStandard = 'iso9001' | 'iso14001' | 'iso45001';
-type Step = 0 | 1 | 2 | 3;
+type Step = 0 | 1 | 2;
 
-const STEPS = ['Configuración', 'Pre-diagnóstico', 'Diagnóstico ISO', 'Plan'];
+const STEPS = ['Configuración', 'Pre-diagnóstico', 'Diagnóstico ISO'];
 
 export function NewProcessWizardPage() {
   const navigate = useNavigate();
@@ -23,7 +21,6 @@ export function NewProcessWizardPage() {
   const resumeProcessId = searchParams.get('processId');
 
   const resume = useProcess(resumeProcessId ?? undefined);
-  const resumePlan = usePlan(resumeProcessId ?? null);
 
   const processData = resume?.data;
   const preDiagnosisDone =
@@ -34,7 +31,6 @@ export function NewProcessWizardPage() {
   const [step, setStep] = useState<Step>(0);
   const [createdProcessId, setCreatedProcessId] = useState<string | null>(null);
   const [createdIso, setCreatedIso] = useState<ISOStandard | null>(null);
-  const [planOverride, setPlanOverride] = useState<Plan | null>(null);
   const [, setIsDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [resumeApplied, setResumeApplied] = useState(false);
@@ -46,14 +42,12 @@ export function NewProcessWizardPage() {
   const isoStandard = processData?.iso_standard ?? createdIso;
 
   // Resume landing step, derived from server state + draft (never re-run step 0,
-  // which would create a duplicate process; never land on step 3 without a plan).
+  // which would create a duplicate process; clamp to the last wizard step).
   const loadedDraft = resumeProcessId && processData ? loadDraft(resumeProcessId) : null;
-  const serverStep: Step = hasPlan ? 3 : preDiagnosisDone ? 1 : 0;
+  const serverStep: Step = preDiagnosisDone ? 1 : 0;
   const draftStep = loadedDraft?.step ?? 0;
   const landingStep: Step = resumeProcessId
-    ? Math.max(1, serverStep, draftStep) > 2 && !hasPlan
-      ? 2
-      : (Math.max(1, serverStep, draftStep) as Step)
+    ? (Math.min(Math.max(1, serverStep, draftStep), 2) as Step)
     : 0;
 
   // Adjust state during render (React's recommended pattern): apply the resume
@@ -62,6 +56,14 @@ export function NewProcessWizardPage() {
     setResumeApplied(true);
     setStep(landingStep);
   }
+
+  // When resuming a process whose plan is already generated, redirect straight
+  // to the dedicated plan page instead of landing on a wizard step.
+  useEffect(() => {
+    if (resumeProcessId && hasPlan && !resume.isLoading) {
+      navigate(`/processes/${resumeProcessId}/plan`);
+    }
+  }, [resumeProcessId, hasPlan, resume.isLoading, navigate]);
 
   const lastSavedTime = lastSaved ?? loadedDraft?.updatedAt ?? null;
 
@@ -99,17 +101,12 @@ export function NewProcessWizardPage() {
     setStep(2);
   };
 
-  const handlePlanReady = (planResult: Plan) => {
+  const handlePlanReady = () => {
     if (processId) clearDraft(processId);
-    setPlanOverride(planResult);
     setLastSaved(null);
     setIsDirty(false);
-    setStep(3);
     toast.success('Plan de acción generado', { position: 'bottom-center' });
-  };
-
-  const handleViewProcess = () => {
-    if (processId) navigate(`/processes/${processId}`);
+    if (processId) navigate(`/processes/${processId}/plan`);
   };
 
   const showAutosave = step === 1 || step === 2;
@@ -123,9 +120,6 @@ export function NewProcessWizardPage() {
     (resumeFindings.data?.answers && Object.keys(resumeFindings.data.answers).length > 0
       ? resumeFindings.data.answers
       : loadedDraft?.findings) ?? undefined;
-
-  const plan = resumeProcessId && hasPlan && resumePlan.data ? resumePlan.data : planOverride;
-  const planLoading = resumeProcessId && hasPlan && !plan;
 
   if (resumeProcessId && !resumeApplied) {
     if (resume?.isLoading) {
@@ -199,14 +193,6 @@ export function NewProcessWizardPage() {
                 initialValues={initialFindings}
               />
             )}
-            {step === 3 && planLoading && (
-              <div className="flex items-center justify-center h-full text-app-muted text-sm">
-                Cargando plan...
-              </div>
-            )}
-            {step === 3 && plan && (
-              <PlanResultView plan={plan} />
-            )}
           </div>
         </div>
 
@@ -216,16 +202,8 @@ export function NewProcessWizardPage() {
             onClick={handleExit}
             className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
           >
-            {step === 3 ? 'Cerrar' : 'Salir'}
+            Salir
           </button>
-          {step === 3 && (
-            <button
-              onClick={handleViewProcess}
-              className="px-4 py-2 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors"
-            >
-              Ver proceso
-            </button>
-          )}
         </footer>
       </div>
     </div>

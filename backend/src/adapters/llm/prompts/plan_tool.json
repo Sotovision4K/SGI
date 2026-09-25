@@ -4,10 +4,6 @@
   "input_schema": {
     "type": "object",
     "properties": {
-      "summary_md": {
-        "type": "string",
-        "description": "Resumen ejecutivo en markdown (3-5 párrafos) describiendo el estado actual, hallazgos principales y estrategia recomendada para lograr la certificación."
-      },
       "tasks": {
         "type": "array",
         "description": "Lista estructurada de tareas del plan de acción (8-20 tareas).",
@@ -49,6 +45,6 @@
         }
       }
     },
-    "required": ["summary_md", "tasks"]
+    "required": ["tasks"]
   }
 }

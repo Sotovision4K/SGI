@@ -18,7 +18,7 @@ from src.adapters.db.process_repository import ProcessRepository
 from src.adapters.llm.llm_port import SegmentResult
 from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Task, TaskPriority
-from src.domain.entities.process import IsoStandard, Process
+from src.domain.entities.process import IsoStandard, Process, ProcessStatus
 
 
 class _FakeLLM:
@@ -33,7 +33,8 @@ class _FakeLLM:
         m = re.search(r"Bloque de diagnóstico: (.+)", user_prompt)
         bucket = m.group(1).strip() if m else "unknown"
         return SegmentResult(
-            summary_md=f"Resumen {bucket}",
+            # Planner contract: tasks only — no narrative summary.
+            summary_md="",
             tasks=[
                 Task(
                     id=uuid.uuid4(),
@@ -121,6 +122,11 @@ async def test_full_pipeline_route_to_plan(repo):
                 await run_plan_generation(
                     process.id, consultant_id, repo=repo, llm=_FakeLLM()
                 )
+
+                # Plan generated → process transitioned to plan_ready.
+                process_after = await repo.get_process(process.id)
+                assert process_after is not None
+                assert process_after.status == ProcessStatus.PLAN_READY
 
                 # 4. Plan is persisted and readable through the HTTP surface.
                 r = await client.get(f"/processes/{process.id}/plan")

@@ -1,16 +1,19 @@
 """Tests for the LLM adapter — derived from the spec.
 
-Spec says:
-- LLMPort is a Protocol with generate_plan(iso_standard, findings) -> Plan
-- AnthropicAdapter uses claude-sonnet-4-5 (configurable via env)
-- System prompt is in backend/src/adapters/llm/prompts/diagnose_system.md
+Spec says (planner-only contract, 2026-09):
+- LLMPort is a Protocol with generate_segment(system_prompt, user_prompt) -> SegmentResult
+  (the legacy single-call generate_plan(iso_standard, findings) -> Plan was
+  removed — the planner returns tasks only, no narrative summary)
+- AnthropicAdapter uses the configured model (claude-sonnet-4-5 default, env-configurable)
 - Tool schema is in backend/src/adapters/llm/prompts/plan_tool.json
 - Tool is called emit_action_plan with input:
-  { summary_md: string, tasks: [{title, description, priority, estimated_effort, owner_role}] }
+  { tasks: [{title, description, priority, estimated_effort, owner_role}] }
+  (summary_md was removed from the schema — SegmentResult.summary_md is "")
 - All content in Spanish
-- All output (summary + tasks) in Spanish
+- All output (tasks) in Spanish
 """
 
+import asyncio
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -22,6 +25,30 @@ import pytest
 from src.errors import LLMRequestRejectedError, LLMServiceError, RateLimitError
 
 
+PROMPTS_DIR = (
+    Path(__file__).resolve().parent.parent.parent
+    / "src"
+    / "adapters"
+    / "llm"
+    / "prompts"
+)
+
+
+def _tool_response(tool_input: dict, input_tokens: int = 100, output_tokens: int = 50):
+    """Build a fake Anthropic response with one ``emit_action_plan`` tool_use block."""
+    tool_block = MagicMock()
+    tool_block.type = "tool_use"
+    tool_block.name = "emit_action_plan"
+    tool_block.input = tool_input
+    response = MagicMock()
+    response.content = [tool_block]
+    usage = MagicMock()
+    usage.input_tokens = input_tokens
+    usage.output_tokens = output_tokens
+    response.usage = usage
+    return response
+
+
 class TestLLMPortProtocol:
     def test_llm_port_is_a_protocol(self):
         from src.adapters.llm.llm_port import LLMPort
@@ -29,54 +56,42 @@ class TestLLMPortProtocol:
         # Protocol classes should be runtime-checkable
         assert hasattr(LLMPort, "__call__") or hasattr(LLMPort, "_is_protocol")
 
-    def test_generate_plan_signature(self):
+    def test_generate_segment_signature(self):
         import inspect
 
         from src.adapters.llm.llm_port import LLMPort
 
-        sig = inspect.signature(LLMPort.generate_plan)
+        sig = inspect.signature(LLMPort.generate_segment)
         params = list(sig.parameters.keys())
-        # self, iso_standard, findings
-        assert "iso_standard" in params
-        assert "findings" in params
+        assert "system_prompt" in params
+        assert "user_prompt" in params
+
+    def test_generate_plan_removed_from_port(self):
+        # Planner contract: the port must no longer declare the legacy
+        # single-call generate_plan — adapters only implement generate_segment.
+        from src.adapters.llm.llm_port import LLMPort
+
+        assert not hasattr(LLMPort, "generate_plan")
 
 
-class TestPromptFiles:
-    PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "src" / "adapters" / "llm" / "prompts"
-
-    def test_system_prompt_exists(self):
-        assert (self.PROMPTS_DIR / "diagnose_system.md").exists()
-
-    def test_system_prompt_includes_iso_clause_context(self):
-        text = (self.PROMPTS_DIR / "diagnose_system.md").read_text(encoding="utf-8")
-        # Must mention ISO clause numbers from the spec
-        for clause in ["4.1", "5.1", "6.1", "7.1", "8.1", "9.1", "10.1"]:
-            assert clause in text, f"Missing clause {clause} in system prompt"
-
-    def test_system_prompt_is_in_spanish(self):
-        text = (self.PROMPTS_DIR / "diagnose_system.md").read_text(encoding="utf-8")
-        # Check for Spanish keywords
-        spanish_words = ["consultor", "certificación", "empresa", "plan de acción", "tareas"]
-        assert any(w in text.lower() for w in spanish_words)
-
-    def test_system_prompt_uses_iso_placeholder(self):
-        text = (self.PROMPTS_DIR / "diagnose_system.md").read_text(encoding="utf-8")
-        assert "{iso_standard}" in text, "System prompt must use {iso_standard} placeholder"
-
+class TestToolSchema:
     def test_tool_schema_exists(self):
-        assert (self.PROMPTS_DIR / "plan_tool.json").exists()
+        assert (PROMPTS_DIR / "plan_tool.json").exists()
 
-    def test_tool_schema_has_required_fields(self):
-        schema = json.loads((self.PROMPTS_DIR / "plan_tool.json").read_text(encoding="utf-8"))
+    def test_tool_schema_tasks_only_no_summary(self):
+        schema = json.loads((PROMPTS_DIR / "plan_tool.json").read_text(encoding="utf-8"))
         assert schema.get("name") == "emit_action_plan"
         props = schema["input_schema"]["properties"]
-        for field in ("summary_md", "tasks"):
-            assert field in props, f"Tool schema missing field: {field}"
-        assert "summary_md" in schema["input_schema"]["required"]
-        assert "tasks" in schema["input_schema"]["required"]
+        # Planner contract: tasks only — the narrative summary_md is gone.
+        assert "tasks" in props, "Tool schema missing field: tasks"
+        assert "summary_md" not in props, "summary_md must be removed from the schema"
+        required = schema["input_schema"]["required"]
+        assert "tasks" in required
+        assert "summary_md" not in required
+        assert required == ["tasks"]
 
     def test_tool_schema_task_required_fields(self):
-        schema = json.loads((self.PROMPTS_DIR / "plan_tool.json").read_text(encoding="utf-8"))
+        schema = json.loads((PROMPTS_DIR / "plan_tool.json").read_text(encoding="utf-8"))
         task_props = schema["input_schema"]["properties"]["tasks"]["items"]["properties"]
         task_required = schema["input_schema"]["properties"]["tasks"]["items"]["required"]
         for field in ("title", "description", "priority", "estimated_effort", "owner_role"):
@@ -84,9 +99,16 @@ class TestPromptFiles:
             assert field in task_required, f"Task field not required: {field}"
 
     def test_tool_schema_priority_enum(self):
-        schema = json.loads((self.PROMPTS_DIR / "plan_tool.json").read_text(encoding="utf-8"))
+        schema = json.loads((PROMPTS_DIR / "plan_tool.json").read_text(encoding="utf-8"))
         enum = schema["input_schema"]["properties"]["tasks"]["items"]["properties"]["priority"]["enum"]
         assert set(enum) == {"low", "medium", "high"}
+
+    def test_legacy_diagnose_system_prompt_removed(self):
+        # The legacy single-call prompt went away together with generate_plan;
+        # the live system prompt is
+        # src/services/prompt_templates/generate_plan_system.txt
+        # (covered by test_prompt_builder.py).
+        assert not (PROMPTS_DIR / "diagnose_system.md").exists()
 
 
 class TestAnthropicAdapter:
@@ -116,158 +138,11 @@ class TestAnthropicAdapter:
             )
             assert adapter._model == "claude-test-model"
 
-    def test_generate_plan_sends_findings_as_user_message(self, mock_settings):
-        with patch("anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value = mock_client
+    def test_adapter_has_no_generate_plan(self, mock_settings):
+        # The adapter must not keep the removed legacy method around.
+        from src.adapters.llm.anthropic_adapter import AnthropicAdapter
 
-            # Build a fake Anthropic response with a tool_use block
-            tool_block = MagicMock()
-            tool_block.type = "tool_use"
-            tool_block.name = "emit_action_plan"
-            tool_block.input = {
-                "summary_md": "Resumen ejecutivo.",
-                "tasks": [
-                    {
-                        "title": "Documentar política",
-                        "description": "Crear documento formal",
-                        "priority": "high",
-                        "estimated_effort": "1 semana",
-                        "owner_role": "Gerente de Calidad",
-                    }
-                ],
-            }
-            response = MagicMock()
-            response.content = [tool_block]
-            mock_client.messages.create = AsyncMock(return_value=response)
-
-            from src.adapters.llm.anthropic_adapter import AnthropicAdapter
-
-            adapter = AnthropicAdapter(
-                api_key=mock_settings.anthropic_api_key,
-                model=mock_settings.anthropic_model,
-            )
-
-            import asyncio
-            plan = asyncio.run(
-                adapter.generate_plan(
-                    iso_standard="iso9001",
-                    findings={
-                        "answers": {"q1": "11-50"},
-                        "free_text": "Empresa mediana",
-                    },
-                )
-            )
-
-            # Verify the call
-            call_kwargs = mock_client.messages.create.call_args.kwargs
-            assert call_kwargs["model"] == "claude-test-model"
-            assert "system" in call_kwargs
-            assert "tools" in call_kwargs
-            assert call_kwargs["tools"][0]["name"] == "emit_action_plan"
-            assert call_kwargs["tool_choice"]["type"] == "tool"
-
-            # Verify findings were included in the user message
-            user_msg = call_kwargs["messages"][0]["content"]
-            assert "11-50" in user_msg or "Empresa mediana" in user_msg
-
-            # Verify plan parsing
-            assert plan.summary_md == "Resumen ejecutivo."
-            assert len(plan.tasks) == 1
-            assert plan.tasks[0].title == "Documentar política"
-            assert plan.tasks[0].priority.value == "high"
-            assert plan.tasks[0].sort_order == 0
-
-    def test_generate_plan_raises_if_tool_not_called(self, mock_settings):
-        with patch("anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value = mock_client
-            response = MagicMock()
-            text_block = MagicMock()
-            text_block.type = "text"
-            response.content = [text_block]
-            mock_client.messages.create = AsyncMock(return_value=response)
-
-            from src.adapters.llm.anthropic_adapter import AnthropicAdapter
-
-            adapter = AnthropicAdapter(
-                api_key=mock_settings.anthropic_api_key,
-                model=mock_settings.anthropic_model,
-            )
-
-            import asyncio
-            with pytest.raises(ValueError, match="emit_action_plan"):
-                asyncio.run(adapter.generate_plan("iso9001", {}))
-
-    def test_generate_plan_clamps_title_to_200(self, mock_settings):
-        with patch("anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value = mock_client
-            tool_block = MagicMock()
-            tool_block.type = "tool_use"
-            tool_block.name = "emit_action_plan"
-            tool_block.input = {
-                "summary_md": "ok",
-                "tasks": [
-                    {
-                        "title": "x" * 500,
-                        "description": "d",
-                        "priority": "low",
-                        "estimated_effort": "1d",
-                        "owner_role": "r",
-                    }
-                ],
-            }
-            response = MagicMock()
-            response.content = [tool_block]
-            mock_client.messages.create = AsyncMock(return_value=response)
-
-            from src.adapters.llm.anthropic_adapter import AnthropicAdapter
-
-            adapter = AnthropicAdapter(
-                api_key=mock_settings.anthropic_api_key,
-                model=mock_settings.anthropic_model,
-            )
-
-            import asyncio
-            plan = asyncio.run(adapter.generate_plan("iso9001", {}))
-            assert len(plan.tasks[0].title) == 200
-
-    def test_generate_plan_handles_unknown_priority(self, mock_settings):
-        with patch("anthropic.AsyncAnthropic") as mock_cls:
-            mock_client = MagicMock()
-            mock_cls.return_value = mock_client
-            tool_block = MagicMock()
-            tool_block.type = "tool_use"
-            tool_block.name = "emit_action_plan"
-            tool_block.input = {
-                "summary_md": "ok",
-                "tasks": [
-                    {
-                        "title": "t",
-                        "description": "d",
-                        "priority": "URGENT",  # invalid
-                        "estimated_effort": "1d",
-                        "owner_role": "r",
-                    }
-                ],
-            }
-            response = MagicMock()
-            response.content = [tool_block]
-            mock_client.messages.create = AsyncMock(return_value=response)
-
-            from src.adapters.llm.anthropic_adapter import AnthropicAdapter
-
-            adapter = AnthropicAdapter(
-                api_key=mock_settings.anthropic_api_key,
-                model=mock_settings.anthropic_model,
-            )
-
-            import asyncio
-            plan = asyncio.run(adapter.generate_plan("iso9001", {}))
-            # Should fall back to medium, not crash
-            from src.domain.entities.plan import TaskPriority
-            assert plan.tasks[0].priority == TaskPriority.MEDIUM
+        assert not hasattr(AnthropicAdapter, "generate_plan")
 
 
 class TestGenerateSegment:
@@ -283,11 +158,7 @@ class TestGenerateSegment:
             mock_client = MagicMock()
             mock_cls.return_value = mock_client
 
-            tool_block = MagicMock()
-            tool_block.type = "tool_use"
-            tool_block.name = "emit_action_plan"
-            tool_block.input = {
-                "summary_md": "resumen",
+            tool_input = {
                 "tasks": [
                     {
                         "title": "t",
@@ -300,19 +171,14 @@ class TestGenerateSegment:
                     }
                 ],
             }
-            response = MagicMock()
-            response.content = [tool_block]
-            usage = MagicMock()
-            usage.input_tokens = 100
-            usage.output_tokens = 50
-            response.usage = usage
-            mock_client.messages.create = AsyncMock(return_value=response)
-
-            import asyncio
+            mock_client.messages.create = AsyncMock(
+                return_value=_tool_response(tool_input)
+            )
 
             result = asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
 
-            assert result.summary_md == "resumen"
+            # Planner contract: no narrative summary — always "".
+            assert result.summary_md == ""
             assert len(result.tasks) == 1
             assert result.tasks[0].require_document is True
             assert result.tasks[0].document_title == "doc"
@@ -324,6 +190,33 @@ class TestGenerateSegment:
             # the Stage-C smoke found empty tasks at 1500).
             assert mock_client.messages.create.call_args.kwargs["max_tokens"] == 4096
 
+    def test_generate_segment_ignores_stray_summary_md(self):
+        # Even if a model disobeys the schema and emits a summary_md, the
+        # adapter must not surface it — the planner is tasks-only.
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+
+            tool_input = {
+                "summary_md": "narrative the model should not have produced",
+                "tasks": [
+                    {
+                        "title": "t",
+                        "description": "d",
+                        "priority": "high",
+                        "estimated_effort": "1d",
+                        "owner_role": "r",
+                    }
+                ],
+            }
+            mock_client.messages.create = AsyncMock(
+                return_value=_tool_response(tool_input)
+            )
+
+            result = asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+            assert result.summary_md == ""
+            assert len(result.tasks) == 1
+
     def test_generate_segment_tool_not_emitted_is_retryable(self):
         with patch("anthropic.AsyncAnthropic") as mock_cls:
             mock_client = MagicMock()
@@ -332,17 +225,61 @@ class TestGenerateSegment:
             response.content = [MagicMock(type="text")]  # no tool_use block
             mock_client.messages.create = AsyncMock(return_value=response)
 
-            import asyncio
-
             from src.errors import ToolNotEmittedError
 
             with pytest.raises(ToolNotEmittedError):
                 asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
 
-    def test_generate_segment_maps_connection_error_to_retryable(self):
-        import anthropic
-        import httpx
+    def test_generate_segment_clamps_title_to_200(self):
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
 
+            tool_input = {
+                "tasks": [
+                    {
+                        "title": "x" * 500,
+                        "description": "d",
+                        "priority": "low",
+                        "estimated_effort": "1d",
+                        "owner_role": "r",
+                    }
+                ],
+            }
+            mock_client.messages.create = AsyncMock(
+                return_value=_tool_response(tool_input)
+            )
+
+            result = asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+            assert len(result.tasks[0].title) == 200
+
+    def test_generate_segment_handles_unknown_priority(self):
+        with patch("anthropic.AsyncAnthropic") as mock_cls:
+            mock_client = MagicMock()
+            mock_cls.return_value = mock_client
+
+            tool_input = {
+                "tasks": [
+                    {
+                        "title": "t",
+                        "description": "d",
+                        "priority": "URGENT",  # invalid
+                        "estimated_effort": "1d",
+                        "owner_role": "r",
+                    }
+                ],
+            }
+            mock_client.messages.create = AsyncMock(
+                return_value=_tool_response(tool_input)
+            )
+
+            result = asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
+            # Should fall back to medium, not crash
+            from src.domain.entities.plan import TaskPriority
+
+            assert result.tasks[0].priority == TaskPriority.MEDIUM
+
+    def test_generate_segment_maps_connection_error_to_retryable(self):
         with patch("anthropic.AsyncAnthropic") as mock_cls:
             mock_client = MagicMock()
             mock_cls.return_value = mock_client
@@ -350,8 +287,6 @@ class TestGenerateSegment:
             mock_client.messages.create = AsyncMock(
                 side_effect=anthropic.APIConnectionError(message="boom", request=request)
             )
-
-            import asyncio
 
             from src.errors import LLMConnectionError
 
@@ -382,8 +317,6 @@ class TestGenerateSegment:
                 side_effect=sdk_error("rejected", response=response, body=None)
             )
 
-            import asyncio
-
             with pytest.raises(LLMRequestRejectedError):
                 asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))
 
@@ -408,8 +341,6 @@ class TestGenerateSegment:
             mock_client.messages.create = AsyncMock(
                 side_effect=sdk_error("transient", response=response, body=None)
             )
-
-            import asyncio
 
             with pytest.raises(expected):
                 asyncio.run(self._adapter(mock_client).generate_segment("sys", "user"))

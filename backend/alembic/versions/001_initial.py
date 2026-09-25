@@ -14,7 +14,7 @@ re-creating anything.  Future schema changes use autogenerate.
 from typing import Sequence, Union
 
 from alembic import op
-import sqlalchemy as sa
+import sqlalchemy as sa  # noqa: F401 — standard alembic header; baseline uses raw op.execute SQL
 
 
 revision: str = "001_initial"

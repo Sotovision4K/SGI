@@ -9,8 +9,15 @@ from sqlmodel import SQLModel
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from src.adapters.db.user_repository import UserTable, CompanyTable, ConsultantTable
-from src.adapters.db.process_repository import (
+# Deliberate side-effect imports: registering the SQLModel table classes
+# populates SQLModel.metadata (target_metadata below) so `alembic revision
+# --autogenerate` can see the schema. The names themselves are unused here.
+from src.adapters.db.user_repository import (  # noqa: F401
+    UserTable,
+    CompanyTable,
+    ConsultantTable,
+)
+from src.adapters.db.process_repository import (  # noqa: F401
     ProcessTable,
     FindingTable,
     PlanTable,
