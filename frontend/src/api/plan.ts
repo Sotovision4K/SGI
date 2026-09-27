@@ -20,11 +20,15 @@ export interface PlanTask {
   priority: 'low' | 'medium' | 'high';
   estimated_effort: string;
   owner_role: string;
+  department: string;
+  status: TaskStatus;
   sort_order: number;
   source_clause: string;
   require_document: boolean;
   document_title: string | null;
 }
+
+export type TaskStatus = 'pending' | 'started' | 'completed';
 
 export interface UpdateTaskInput {
   title?: string;
@@ -32,8 +36,18 @@ export interface UpdateTaskInput {
   priority?: 'low' | 'medium' | 'high';
   estimated_effort?: string;
   owner_role?: string;
+  department?: string;
+  status?: TaskStatus;
   require_document?: boolean;
   document_title?: string | null;
+}
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id: string;
+  body: string;
+  created_at: string;
 }
 
 export interface Plan {
@@ -154,4 +168,27 @@ export async function updateTask(
     token,
     signal,
   });
+}
+
+export async function getTaskComments(
+  processId: string,
+  taskId: string,
+  { token, signal }: ApiCallOptions,
+): Promise<TaskComment[]> {
+  return apiRequest<TaskComment[]>(
+    `/processes/${processId}/plan/tasks/${taskId}/comments`,
+    { token, signal },
+  );
+}
+
+export async function addTaskComment(
+  processId: string,
+  taskId: string,
+  body: string,
+  { token, signal }: ApiCallOptions,
+): Promise<TaskComment> {
+  return apiRequest<TaskComment>(
+    `/processes/${processId}/plan/tasks/${taskId}/comments`,
+    { method: 'POST', body: { body }, token, signal },
+  );
 }

@@ -59,6 +59,12 @@ const COMPLETED_PROCESS: Process = {
   status: 'completed',
 };
 
+const PLAN_READY_PROCESS: Process = {
+  ...ACTIVE_PROCESS,
+  id: 'proc-plan-1',
+  status: 'plan_ready',
+};
+
 describe('ProcessTable — complete/reopen actions', () => {
   beforeEach(() => {
     mockCompleteProcess.mockReset();
@@ -72,6 +78,7 @@ describe('ProcessTable — complete/reopen actions', () => {
       <ProcessTable
         processes={[ACTIVE_PROCESS]}
         onView={vi.fn()}
+        onViewPlan={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
@@ -85,11 +92,29 @@ describe('ProcessTable — complete/reopen actions', () => {
       <ProcessTable
         processes={[COMPLETED_PROCESS]}
         onView={vi.fn()}
+        onViewPlan={vi.fn()}
         onDelete={vi.fn()}
       />,
     );
     expect(screen.getByRole('button', { name: /Reabrir/i })).toBeInTheDocument();
     // Completar should NOT be present for a completed process
     expect(screen.queryByRole('button', { name: /Completar/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the "Plan listo" badge and a "Ver plan" button for a plan_ready process', () => {
+    const onViewPlan = vi.fn();
+    renderTable(
+      <ProcessTable
+        processes={[PLAN_READY_PROCESS]}
+        onView={vi.fn()}
+        onViewPlan={onViewPlan}
+        onDelete={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Plan listo')).toBeInTheDocument();
+    const viewPlan = screen.getByRole('button', { name: 'Ver plan' });
+    expect(viewPlan).toBeInTheDocument();
+    viewPlan.click();
+    expect(onViewPlan).toHaveBeenCalledWith('proc-plan-1');
   });
 });

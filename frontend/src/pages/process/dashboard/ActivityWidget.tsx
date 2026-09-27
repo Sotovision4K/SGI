@@ -16,7 +16,7 @@ const STATUS_DOT: Record<Process['status'], string> = {
 
 const STATUS_LABEL: Record<Process['status'], { label: string; className: string }> = {
   in_diagnosis: { label: 'En diagnóstico', className: 'bg-status-pending-bg text-status-pending-text' },
-  plan_ready: { label: 'En revisión', className: 'bg-status-review-bg text-status-review-text' },
+  plan_ready: { label: 'Plan listo', className: 'bg-status-review-bg text-status-review-text' },
   in_progress: { label: 'En progreso', className: 'bg-status-in-progress-bg text-status-in-progress-text' },
   completed: { label: 'Completado', className: 'bg-status-completed-bg text-status-completed-text' },
 };

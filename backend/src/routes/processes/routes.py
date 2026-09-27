@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.finding import Finding
-from src.domain.entities.plan import TaskPriority
+from src.domain.entities.plan import TaskComment, TaskPriority, TaskStatus
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.plan_job import PlanJob, make_default_segments
 from src.adapters.db.process_repository import ProcessRepository
@@ -120,6 +120,8 @@ class TaskSchema(BaseModel):
     priority: str
     estimated_effort: str
     owner_role: str
+    department: str = ""
+    status: str = "pending"
     sort_order: int
     source_clause: str = ""
     require_document: bool = False
@@ -143,8 +145,22 @@ class UpdateTaskRequest(BaseModel):
     priority: TaskPriority | None = None
     estimated_effort: str | None = Field(default=None, max_length=100)
     owner_role: str | None = Field(default=None, max_length=100)
+    department: str | None = Field(default=None, max_length=100)
+    status: TaskStatus | None = None
     require_document: bool | None = None
     document_title: str | None = Field(default=None, max_length=200)
+
+
+class TaskCommentSchema(BaseModel):
+    id: str
+    task_id: str
+    author_id: str
+    body: str
+    created_at: str
+
+
+class AddTaskCommentRequest(BaseModel):
+    body: str = Field(max_length=2000)
 
 
 class PlanGenerationEnqueueResponse(BaseModel):
@@ -451,6 +467,8 @@ async def get_plan(
                 priority=t.priority.value,
                 estimated_effort=t.estimated_effort,
                 owner_role=t.owner_role,
+                department=t.department,
+                status=t.status.value,
                 sort_order=t.sort_order,
                 source_clause=t.source_clause,
                 require_document=t.require_document,
@@ -495,6 +513,8 @@ async def update_task(
         # Persist as the plain string value; patch_task also converts
         # defensively, but the wire contract here is a str dict.
         updates["priority"] = updates["priority"].value
+    if "status" in updates and updates["status"] is not None:
+        updates["status"] = updates["status"].value
 
     updated = await repo.patch_task(process_id, task_id, updates)
     if updated is None:
@@ -507,10 +527,68 @@ async def update_task(
         priority=updated.priority.value,
         estimated_effort=updated.estimated_effort,
         owner_role=updated.owner_role,
+        department=updated.department,
+        status=updated.status.value,
         sort_order=updated.sort_order,
         source_clause=updated.source_clause,
         require_document=updated.require_document,
         document_title=updated.document_title,
+    )
+
+
+@router.get(
+    "/{process_id}/plan/tasks/{task_id}/comments",
+    response_model=list[TaskCommentSchema],
+)
+async def list_task_comments(
+    process_id: UUID,
+    task_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> list[TaskCommentSchema]:
+    """List comments for a plan task (kanban). 404 if not owned / no such task."""
+    await _require_process_owner(process_id, repo, current_user)
+    comments = await repo.list_task_comments(process_id, task_id)
+    if comments is None:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    return [
+        TaskCommentSchema(
+            id=str(c.id),
+            task_id=str(c.task_id),
+            author_id=str(c.author_id),
+            body=c.body,
+            created_at=c.created_at.isoformat(),
+        )
+        for c in comments
+    ]
+
+
+@router.post(
+    "/{process_id}/plan/tasks/{task_id}/comments",
+    response_model=TaskCommentSchema,
+    status_code=201,
+)
+async def add_task_comment(
+    process_id: UUID,
+    task_id: UUID,
+    payload: AddTaskCommentRequest,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> TaskCommentSchema:
+    """Append a comment to a plan task (kanban). 404 if not owned / no such task."""
+    await _require_process_owner(process_id, repo, current_user)
+    sub = current_user.get("sub")
+    if not sub:
+        raise HTTPException(status_code=400, detail="Sub claim requerido")
+    comment = await repo.add_task_comment(process_id, task_id, UUID(sub), payload.body)
+    if comment is None:
+        raise HTTPException(status_code=404, detail="Tarea no encontrada")
+    return TaskCommentSchema(
+        id=str(comment.id),
+        task_id=str(comment.task_id),
+        author_id=str(comment.author_id),
+        body=comment.body,
+        created_at=comment.created_at.isoformat(),
     )
 
 

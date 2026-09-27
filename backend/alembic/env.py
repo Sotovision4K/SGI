@@ -22,6 +22,7 @@ from src.adapters.db.process_repository import (  # noqa: F401
     FindingTable,
     PlanTable,
     TaskTable,
+    TaskCommentTable,
     AuditLogLlmTable,
     PlanJobTable,
 )

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.finding import Finding
-from src.domain.entities.plan import Plan, Task, TaskPriority
+from src.domain.entities.plan import Plan, Task, TaskComment, TaskPriority, TaskStatus
 from src.domain.entities.audit_log import AuditLogLLM
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
 from src.errors import JobErrorCode, LeaseLostError
@@ -70,10 +70,34 @@ class TaskTable(SQLModel, table=True):
     priority: str = Field(max_length=10, default="medium")
     estimated_effort: str = Field(max_length=100, default="")
     owner_role: str = Field(max_length=100, default="")
+    department: str = Field(max_length=100, default="")
+    status: str = Field(max_length=20, default="pending")
     sort_order: int = Field(default=0)
     source_clause: str = Field(default="")
     require_document: bool = Field(default=False)
     document_title: str | None = Field(default=None, max_length=200)
+
+
+class TaskCommentTable(SQLModel, table=True):
+    """SQLModel table for the `task_comments` table (kanban comments per task).
+
+    # Q: Why no FK constraint on task_id (only an index)?
+    # A: Mirrors TaskTable.plan_id — the existing schema deliberately omits hard
+    #    FK constraints (see the raw DDL in 001_initial, which has no REFERENCES
+    #    clauses). Scoping to the caller's plan happens in the repository
+    #    (process → plan → task), not via database constraints, for IDOR safety.
+    # Q: Why is author_id a UUID with no FK to users?
+    # A: The author is the authenticated Cognito sub, which is not guaranteed to
+    #    have a users row yet at comment time. We store it as a plain UUID.
+    """
+
+    __tablename__ = "task_comments"
+
+    id: uuid.UUID = Field(primary_key=True, default_factory=uuid.uuid4)
+    task_id: uuid.UUID = Field(index=True)
+    author_id: uuid.UUID
+    body: str = Field(default="")
+    created_at: str  # ISO 8601 string, mirroring the other tables
 
 
 class AuditLogLlmTable(SQLModel, table=True):
@@ -255,6 +279,12 @@ class ProcessRepository:
             if row is None:
                 raise ValueError("Process not found")
             row.pre_diagnosis = json.dumps(answers, ensure_ascii=False)
+            # Lifecycle (kanban §3): the first pre-diagnosis submission moves the
+            # process out of `in_diagnosis` (nothing done yet) into `in_progress`.
+            # A process already past that stage (in_progress / plan_ready /
+            # completed) keeps its status — re-saving answers must not downgrade.
+            if row.status == ProcessStatus.IN_DIAGNOSIS.value:
+                row.status = ProcessStatus.IN_PROGRESS.value
             row.updated_at = datetime.now(timezone.utc).isoformat()
             await session.commit()
 
@@ -340,6 +370,8 @@ class ProcessRepository:
                     priority=task.priority.value,
                     estimated_effort=task.estimated_effort,
                     owner_role=task.owner_role,
+                    department=task.department,
+                    status=task.status.value,
                     sort_order=task.sort_order,
                     source_clause=task.source_clause,
                     require_document=task.require_document,
@@ -418,8 +450,8 @@ class ProcessRepository:
                 if value is None and key != "document_title":
                     # Explicit null on a non-nullable field = "not provided".
                     continue
-                if key == "priority" and hasattr(value, "value"):
-                    value = value.value  # TaskPriority enum → "high"/"medium"/"low"
+                if key in ("priority", "status") and hasattr(value, "value"):
+                    value = value.value  # TaskPriority/TaskStatus enum → str value
                 setattr(task, key, value)
 
             plan.updated_at = datetime.now(timezone.utc).isoformat()
@@ -428,6 +460,82 @@ class ProcessRepository:
             await session.commit()
             await session.refresh(task)
             return self._task_to_domain(task)
+
+    # ---- Task comments (kanban) -------------------------------------------
+
+    async def list_task_comments(
+        self, process_id: uuid.UUID, task_id: uuid.UUID
+    ) -> list[TaskComment] | None:
+        """List comments for a task, scoped to the caller's process (IDOR-safe).
+
+        Returns None when the process has no plan or the task is not under that
+        plan (the route maps both to 404). Returns [] when the task exists but
+        has no comments.
+        """
+        async with AsyncSession(self._engine) as session:
+            plan = (
+                await session.execute(
+                    select(PlanTable).where(PlanTable.process_id == process_id)
+                )
+            ).scalar_one_or_none()
+            if plan is None:
+                return None
+            task = (
+                await session.execute(
+                    select(TaskTable).where(
+                        TaskTable.id == task_id, TaskTable.plan_id == plan.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if task is None:
+                return None
+            rows = (
+                await session.execute(
+                    select(TaskCommentTable)
+                    .where(TaskCommentTable.task_id == task.id)
+                    .order_by(TaskCommentTable.created_at)
+                )
+            ).scalars().all()
+            return [self._comment_to_domain(c) for c in rows]
+
+    async def add_task_comment(
+        self, process_id: uuid.UUID, task_id: uuid.UUID, author_id: uuid.UUID, body: str
+    ) -> TaskComment | None:
+        """Append a comment to a task, scoped to the caller's process (IDOR-safe).
+
+        Returns None when the process has no plan or the task is not under that
+        plan (the route maps both to 404).
+        """
+        from datetime import datetime, timezone
+
+        async with AsyncSession(self._engine) as session:
+            plan = (
+                await session.execute(
+                    select(PlanTable).where(PlanTable.process_id == process_id)
+                )
+            ).scalar_one_or_none()
+            if plan is None:
+                return None
+            task = (
+                await session.execute(
+                    select(TaskTable).where(
+                        TaskTable.id == task_id, TaskTable.plan_id == plan.id
+                    )
+                )
+            ).scalar_one_or_none()
+            if task is None:
+                return None
+            comment = TaskCommentTable(
+                id=uuid.uuid4(),
+                task_id=task.id,
+                author_id=author_id,
+                body=body,
+                created_at=datetime.now(timezone.utc).isoformat(),
+            )
+            session.add(comment)
+            await session.commit()
+            await session.refresh(comment)
+            return self._comment_to_domain(comment)
 
     # ---- LLM audit log -----------------------------------------------------
 
@@ -837,10 +945,23 @@ class ProcessRepository:
             priority=TaskPriority(row.priority),
             estimated_effort=row.estimated_effort,
             owner_role=row.owner_role,
+            department=row.department,
+            status=TaskStatus(row.status),
             sort_order=row.sort_order,
             source_clause=row.source_clause,
             require_document=row.require_document,
             document_title=row.document_title,
+        )
+
+    @staticmethod
+    def _comment_to_domain(row: TaskCommentTable) -> TaskComment:
+        from datetime import datetime
+        return TaskComment(
+            id=row.id,
+            task_id=row.task_id,
+            author_id=row.author_id,
+            body=row.body,
+            created_at=datetime.fromisoformat(row.created_at),
         )
 
     @staticmethod

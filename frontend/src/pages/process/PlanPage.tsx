@@ -56,7 +56,7 @@ export const PlanPage = () => {
         )}
       </div>
 
-      <PlanResultView plan={plan} readOnly />
+      <PlanResultView plan={plan} />
     </div>
   );
 };

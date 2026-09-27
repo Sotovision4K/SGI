@@ -29,7 +29,7 @@ export function Sidebar() {
     ].join(' ');
 
   return (
-    <aside className="w-64 bg-app-primary min-h-screen flex flex-col">
+    <aside className="w-64 shrink-0 bg-app-primary h-full flex flex-col">
       {/* Brand */}
       <div className="flex items-center gap-2 px-4 py-5 border-b border-white/10">
         <div className="w-8 h-8 rounded bg-app-accent/20 flex items-center justify-center">

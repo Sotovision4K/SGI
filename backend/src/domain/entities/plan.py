@@ -11,6 +11,15 @@ class TaskPriority(str, Enum):
     HIGH = "high"
 
 
+class TaskStatus(str, Enum):
+    """Kanban column for a task. English values are stored in the DB; the
+    frontend maps them to Spanish column labels (Pendiente/Iniciada/Completada)."""
+
+    PENDING = "pending"
+    STARTED = "started"
+    COMPLETED = "completed"
+
+
 class Task(BaseModel):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     plan_id: uuid.UUID
@@ -19,10 +28,22 @@ class Task(BaseModel):
     priority: TaskPriority = TaskPriority.MEDIUM
     estimated_effort: str = Field(default="", max_length=100)
     owner_role: str = Field(default="", max_length=100)
+    department: str = Field(default="", max_length=100)  # responsible department (empty = "Por definir")
+    status: TaskStatus = TaskStatus.PENDING
     sort_order: int = 0
     source_clause: str = ""          # ISO clause, server-filled from the producing bucket
     require_document: bool = False   # whether this task needs a supporting document
     document_title: str | None = Field(default=None, max_length=200)  # title of the required document (nullable)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TaskComment(BaseModel):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4)
+    task_id: uuid.UUID
+    author_id: uuid.UUID
+    body: str = ""
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
     model_config = ConfigDict(from_attributes=True)
 

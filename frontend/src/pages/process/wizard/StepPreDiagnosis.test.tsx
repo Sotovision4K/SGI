@@ -13,6 +13,8 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import type { ReactNode } from 'react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { Questionnaire } from '../../../api/questionnaire';
 import type { UseQueryResult } from '@tanstack/react-query';
 
@@ -65,6 +67,13 @@ vi.mock('../../../api/process', () => ({
 import { useQuestionnaire } from '../../../hooks/useQuestionnaire';
 import { StepPreDiagnosis } from './StepPreDiagnosis';
 
+function renderWithClient(ui: ReactNode) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
+
 function setQuestionnaire(data: Questionnaire | undefined, isLoading: boolean, error: unknown) {
   vi.mocked(useQuestionnaire).mockReturnValue({
     data,
@@ -85,14 +94,14 @@ describe('StepPreDiagnosis', () => {
 
   it('renders loading state while fetching', () => {
     setQuestionnaire(undefined, true, null);
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={vi.fn()} onDirtyChange={vi.fn()} />,
     );
     expect(screen.getByText(/Cargando pre-diagnóstico/i)).toBeInTheDocument();
   });
 
   it('renders a fallback when isoStandard prop is missing', () => {
-    render(
+    renderWithClient(
       // isoStandard is optional — omitting it exercises the fallback path
       <StepPreDiagnosis processId="p-1" onDone={vi.fn()} onDirtyChange={vi.fn()} />,
     );
@@ -100,7 +109,7 @@ describe('StepPreDiagnosis', () => {
   });
 
   it('renders first group title, labels, required asterisk and progress indicator', () => {
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={vi.fn()} onDirtyChange={vi.fn()} />,
     );
     expect(screen.getByText('Perfil')).toBeInTheDocument();
@@ -113,7 +122,7 @@ describe('StepPreDiagnosis', () => {
   });
 
   it('Next is disabled until required text field is filled, then advances to the second group', () => {
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={vi.fn()} onDirtyChange={vi.fn()} />,
     );
     const next = screen.getByRole('button', { name: /Siguiente/i });
@@ -130,7 +139,7 @@ describe('StepPreDiagnosis', () => {
 
   it('"Sugerir con IA" button populates the chips value with suggested objectives', () => {
     const onDirtyChange = vi.fn();
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={vi.fn()} onDirtyChange={onDirtyChange} />,
     );
     // Fill required text field to allow navigation later
@@ -147,7 +156,7 @@ describe('StepPreDiagnosis', () => {
   it('"Revisar" navigates to the review step which lists answers, then "Enviar" submits', async () => {
     const onDone = vi.fn();
     mockSavePreDiagnosis.mockResolvedValue({ id: 'p-1' });
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={onDone} onDirtyChange={vi.fn()} />,
     );
     // --- Substep 0 (Perfil) ---
@@ -183,7 +192,7 @@ describe('StepPreDiagnosis', () => {
   it('shows an error message and does NOT call onDone when savePreDiagnosis rejects', async () => {
     const onDone = vi.fn();
     mockSavePreDiagnosis.mockRejectedValue({ status: 500 });
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={onDone} onDirtyChange={vi.fn()} />,
     );
     // Fill required and advance through both groups to review.
@@ -200,7 +209,7 @@ describe('StepPreDiagnosis', () => {
   });
 
   it('"Anterior" returns to the previous sub-step', () => {
-    render(
+    renderWithClient(
       <StepPreDiagnosis processId="p-1" isoStandard={ISO} onDone={vi.fn()} onDirtyChange={vi.fn()} />,
     );
     fireEvent.change(screen.getByPlaceholderText('Nombre'), { target: { value: 'Ana' } });
@@ -212,7 +221,7 @@ describe('StepPreDiagnosis', () => {
   });
 
   it('seeds fields from initialValues (resume mode) overriding questionnaire defaults', () => {
-    render(
+    renderWithClient(
       <StepPreDiagnosis
         processId="p-1"
         isoStandard={ISO}
@@ -225,7 +234,7 @@ describe('StepPreDiagnosis', () => {
   });
 
   it('lands on the review sub-step when startAtReview is set', () => {
-    render(
+    renderWithClient(
       <StepPreDiagnosis
         processId="p-1"
         isoStandard={ISO}
@@ -242,7 +251,7 @@ describe('StepPreDiagnosis', () => {
 
   it('calls onProgressSave with current answers + target sub-step on Siguiente', () => {
     const onProgressSave = vi.fn();
-    render(
+    renderWithClient(
       <StepPreDiagnosis
         processId="p-1"
         isoStandard={ISO}
@@ -258,7 +267,7 @@ describe('StepPreDiagnosis', () => {
 
   it('calls onProgressSave on Anterior transitions', () => {
     const onProgressSave = vi.fn();
-    render(
+    renderWithClient(
       <StepPreDiagnosis
         processId="p-1"
         isoStandard={ISO}

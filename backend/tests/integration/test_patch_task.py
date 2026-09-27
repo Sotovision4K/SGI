@@ -191,3 +191,36 @@ class TestPatchTask:
         row = await _task_row(repo, task.id)
         assert row is not None
         assert row.priority == "high"  # stored as the plain string value
+
+    @pytest.mark.asyncio
+    async def test_patch_task_updates_status_and_department(self, repo):
+        from src.domain.entities.plan import TaskStatus
+
+        plan, task = _make_plan()
+        await repo.replace_plan(plan)
+
+        updated = await repo.patch_task(
+            plan.process_id, task.id, {"status": TaskStatus.COMPLETED, "department": "Calidad"}
+        )
+
+        assert updated is not None
+        assert updated.status is TaskStatus.COMPLETED
+        assert updated.department == "Calidad"
+        row = await _task_row(repo, task.id)
+        assert row is not None
+        assert row.status == "completed"  # stored as the plain string value
+        assert row.department == "Calidad"
+
+    @pytest.mark.asyncio
+    async def test_patch_task_defaults_status_and_department(self, repo):
+        from src.domain.entities.plan import TaskStatus
+
+        plan, task = _make_plan()
+        await repo.replace_plan(plan)
+
+        loaded = await repo.get_plan(plan.process_id)
+        assert loaded is not None
+        t = loaded.tasks[0]
+        # LLM-generated tasks carry the kanban defaults (no department, pending).
+        assert t.department == ""
+        assert t.status is TaskStatus.PENDING

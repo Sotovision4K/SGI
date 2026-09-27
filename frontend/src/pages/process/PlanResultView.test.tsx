@@ -1,17 +1,13 @@
 /**
- * Test: PlanResultView — inline task editing (Phase 6: editable plan tasks)
+ * Test: PlanResultView — kanban board (3 columns, drag & drop, complete, modal)
  *
  * Verifies:
- *  - Read-only rendering intact; each card has an edit affordance ("Editar tarea")
- *  - readOnly prop hides every edit affordance while tasks still render
- *  - Edit mode shows a form prefilled with the task values
- *  - Save sends only the changed fields via useUpdateTask
- *  - Toggling require_document off sends require_document:false + document_title:null
- *  - Saving with no changes exits edit mode without calling the mutation
- *  - Cancel discards local edits and returns to read-only
- *  - Only one card can be in edit mode at a time
- *  - document_title input appears only when require_document is checked
- *  - Empty title shows a validation error and blocks the mutation
+ *  - Renders the three kanban columns (Pendiente / Iniciada / Completada)
+ *  - Tasks are grouped by their `status`
+ *  - An empty `department` renders a "Por definir" tag; a set one renders its name
+ *  - The "Completar" button moves a task via useUpdateTask (status: 'completed')
+ *  - Completed tasks do not show a "Completar" button
+ *  - Clicking a card opens the edit dialog ("Editar tarea")
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
@@ -22,6 +18,8 @@ const mockMutate = vi.fn();
 
 vi.mock('../../hooks/usePlan', () => ({
   useUpdateTask: () => ({ mutate: mockMutate, isPending: false }),
+  useTaskComments: () => ({ data: [] }),
+  useAddTaskComment: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 import { PlanResultView } from './PlanResultView';
@@ -34,6 +32,8 @@ const TASK_1: PlanTask = {
   priority: 'high',
   estimated_effort: '4 horas',
   owner_role: 'Responsable de calidad',
+  department: '',
+  status: 'pending',
   sort_order: 0,
   source_clause: 'ISO 9001 - 5.2',
   require_document: true,
@@ -47,6 +47,8 @@ const TASK_2: PlanTask = {
   priority: 'low',
   estimated_effort: '2 horas',
   owner_role: 'RRHH',
+  department: 'Recursos Humanos',
+  status: 'completed',
   sort_order: 1,
   source_clause: 'ISO 9001 - 7.2',
   require_document: false,
@@ -60,133 +62,49 @@ const PLAN: Plan = {
   tasks: [TASK_1, TASK_2],
 };
 
-describe('PlanResultView — inline task editing', () => {
+describe('PlanResultView — kanban board', () => {
   beforeEach(() => {
     mockMutate.mockReset();
-    // Simulate TanStack mutate: invoke the per-call onSuccess so the card exits edit mode
-    mockMutate.mockImplementation((_vars: unknown, opts?: { onSuccess?: () => void }) =>
-      opts?.onSuccess?.(),
-    );
   });
 
-  it('renders read-only cards with an edit button per task', () => {
+  it('renders the three columns and both task titles', () => {
     render(<PlanResultView plan={PLAN} />);
+    expect(screen.getByText('Pendiente')).toBeInTheDocument();
+    expect(screen.getByText('Iniciada')).toBeInTheDocument();
+    expect(screen.getByText('Completada')).toBeInTheDocument();
     expect(screen.getByText('Revisar política de calidad')).toBeInTheDocument();
     expect(screen.getByText('Capacitar al personal')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Editar tarea' })).toHaveLength(2);
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
+    expect(screen.getByText('(2 tareas)')).toBeInTheDocument();
   });
 
-  it('renders only the task list — no executive summary section', () => {
+  it('renders a "Por definir" tag for an empty department', () => {
     render(<PlanResultView plan={PLAN} />);
-    expect(screen.queryByText('Resumen ejecutivo')).not.toBeInTheDocument();
-    expect(screen.queryByText('El LLM no generó un resumen.')).not.toBeInTheDocument();
-    // Task list section still present
-    expect(screen.getByText('Plan de acción')).toBeInTheDocument();
+    expect(screen.getByText('Por definir')).toBeInTheDocument();
   });
 
-  it('opens an inline edit form prefilled with the task values', () => {
+  it('renders the department name when set', () => {
     render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    expect(screen.getByDisplayValue('Revisar política de calidad')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Descripción inicial')).toBeInTheDocument();
-    expect(screen.getByRole('combobox', { name: 'Prioridad' })).toHaveValue('high');
-    expect(screen.getByDisplayValue('4 horas')).toBeInTheDocument();
-    expect(screen.getByDisplayValue('Responsable de calidad')).toBeInTheDocument();
-    expect(screen.getByRole('checkbox')).toBeChecked();
-    expect(screen.getByDisplayValue('Política de calidad')).toBeInTheDocument();
+    expect(screen.getByText('Recursos Humanos')).toBeInTheDocument();
   });
 
-  it('save sends only the changed fields', () => {
+  it('moving a task to completed calls useUpdateTask with status completed', () => {
     render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    fireEvent.change(screen.getByDisplayValue('Revisar política de calidad'), {
-      target: { value: 'Nuevo título' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Completar tarea' }));
     expect(mockMutate).toHaveBeenCalledTimes(1);
     expect(mockMutate).toHaveBeenCalledWith(
-      { taskId: 'task-1', input: { title: 'Nuevo título' } },
-      expect.anything(),
-    );
-    // Edit mode exits after a successful save
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Editar tarea' })).toHaveLength(2);
-  });
-
-  it('toggling require_document off sends require_document:false and document_title:null', () => {
-    render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    fireEvent.click(screen.getByRole('checkbox')); // uncheck
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(mockMutate).toHaveBeenCalledWith(
-      { taskId: 'task-1', input: { require_document: false, document_title: null } },
-      expect.anything(),
+      { taskId: 'task-1', input: { status: 'completed' } },
     );
   });
 
-  it('saving with no changes exits edit mode without calling the mutation', () => {
+  it('does not show a "Completar" button on an already-completed task', () => {
     render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(mockMutate).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Editar tarea' })).toHaveLength(2);
+    // Only the pending task has the button (the completed one does not).
+    expect(screen.getAllByRole('button', { name: 'Completar tarea' })).toHaveLength(1);
   });
 
-  it('cancel discards changes and returns to read-only', () => {
+  it('opens the edit dialog when a card is clicked', () => {
     render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    fireEvent.change(screen.getByDisplayValue('Revisar política de calidad'), {
-      target: { value: 'Cambio descartado' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
-    expect(mockMutate).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Guardar' })).not.toBeInTheDocument();
-    expect(screen.getByText('Revisar política de calidad')).toBeInTheDocument();
-  });
-
-  it('only one card is in edit mode at a time', () => {
-    render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    expect(screen.getByDisplayValue('Revisar política de calidad')).toBeInTheDocument();
-    // task-1's card no longer shows an edit button; only task-2's remains
-    const remaining = screen.getAllByRole('button', { name: 'Editar tarea' });
-    expect(remaining).toHaveLength(1);
-    fireEvent.click(remaining[0]); // start editing task-2 → cancels task-1
-    expect(screen.queryByDisplayValue('Revisar política de calidad')).not.toBeInTheDocument();
-    expect(screen.getByDisplayValue('Capacitar al personal')).toBeInTheDocument();
-  });
-
-  it('document_title input appears only when require_document is checked', () => {
-    render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[1]);
-    expect(
-      screen.queryByPlaceholderText(/Procedimiento de control/),
-    ).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('checkbox')); // check
-    expect(screen.getByPlaceholderText(/Procedimiento de control/)).toBeInTheDocument();
-  });
-
-  it('shows a validation error on empty title and does not call the mutation', () => {
-    render(<PlanResultView plan={PLAN} />);
-    fireEvent.click(screen.getAllByRole('button', { name: 'Editar tarea' })[0]);
-    fireEvent.change(screen.getByDisplayValue('Revisar política de calidad'), {
-      target: { value: '' },
-    });
-    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
-    expect(mockMutate).not.toHaveBeenCalled();
-    expect(screen.getByText('El título es obligatorio')).toBeInTheDocument();
-    // Still in edit mode
-    expect(screen.getByRole('button', { name: 'Guardar' })).toBeInTheDocument();
-  });
-});
-
-describe('PlanResultView — readOnly mode', () => {
-  it('shows the task titles but no edit buttons when readOnly is true', () => {
-    render(<PlanResultView plan={PLAN} readOnly />);
-    expect(screen.getByText('Revisar política de calidad')).toBeInTheDocument();
-    expect(screen.getByText('Capacitar al personal')).toBeInTheDocument();
-    expect(screen.queryAllByRole('button', { name: 'Editar tarea' })).toHaveLength(0);
+    fireEvent.click(screen.getByRole('button', { name: /Revisar política de calidad/ }));
+    expect(screen.getByText('Editar tarea')).toBeInTheDocument();
   });
 });

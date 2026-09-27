@@ -5,8 +5,11 @@ import {
   saveFindings,
   generatePlan,
   updateTask,
+  getTaskComments,
+  addTaskComment,
   type Findings,
   type Plan,
+  type TaskComment,
   type UpdateTaskInput,
 } from '../api/plan';
 import { useApiAuthBridge } from '../lib/use-api-auth';
@@ -61,6 +64,30 @@ export function useUpdateTask(processId: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plan', processId] });
       toast.success('Tarea actualizada correctamente');
+    },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
+    },
+  });
+}
+
+export function useTaskComments(processId: string | null, taskId: string | null) {
+  const { getToken } = useApiAuthBridge();
+  return useQuery<TaskComment[]>({
+    queryKey: ['task-comments', processId, taskId],
+    queryFn: ({ signal }) => getTaskComments(processId!, taskId!, { token: getToken(), signal }),
+    enabled: !!processId && !!taskId,
+  });
+}
+
+export function useAddTaskComment(processId: string) {
+  const { getToken } = useApiAuthBridge();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ taskId, body }: { taskId: string; body: string }) =>
+      addTaskComment(processId, taskId, body, { token: getToken() }),
+    onSuccess: (_data, { taskId }) => {
+      queryClient.invalidateQueries({ queryKey: ['task-comments', processId, taskId] });
     },
     onError: (error) => {
       toast.danger(getErrorMessage(error), { title: 'Error' });

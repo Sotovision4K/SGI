@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle, RotateCcw, Eye, Trash2, Pencil } from 'lucide-react';
+import { CheckCircle, RotateCcw, Eye, Trash2, Pencil, FileText } from 'lucide-react';
 import {
   Table,
   TableHeader,
@@ -16,6 +16,7 @@ import type { Process } from '../../../api/process';
 interface ProcessTableProps {
   processes: Process[];
   onView: (id: string) => void;
+  onViewPlan: (id: string) => void;
   onDelete: (id: string) => void;
 }
 
@@ -31,7 +32,7 @@ const STATUS_CONFIG: Record<Process['status'], { label: string; className: strin
     className: 'bg-status-pending-bg text-status-pending-text',
   },
   plan_ready: {
-    label: 'En revisión',
+    label: 'Plan listo',
     className: 'bg-status-review-bg text-status-review-text',
   },
   in_progress: {
@@ -68,14 +69,14 @@ function shortId(id: string): string {
   return id.slice(0, 8);
 }
 
-export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps) {
+export function ProcessTable({ processes, onView, onViewPlan, onDelete }: ProcessTableProps) {
   const completeProcess = useCompleteProcess();
   const reopenProcess = useReopenProcess();
   const [completeTarget, setCompleteTarget] = useState<string | null>(null);
   const [reopenTarget, setReopenTarget] = useState<string | null>(null);
 
   return (
-    <div className="bg-white rounded-2xl border border-app-border shadow-sm overflow-hidden">
+    <div className="bg-white rounded-2xl border border-app-border shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
       <ConfirmDialog
         open={!!completeTarget}
         onOpenChange={(open) => { if (!open) setCompleteTarget(null); }}
@@ -94,7 +95,7 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
         onConfirm={() => { reopenProcess.mutate(reopenTarget!); setReopenTarget(null); }}
         loading={reopenProcess.isPending}
       />
-      <Table>
+      <Table className="flex-1 min-h-0">
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">ID</TableHead>
@@ -153,6 +154,16 @@ export function ProcessTable({ processes, onView, onDelete }: ProcessTableProps)
                       >
                         <Eye className="w-4 h-4" />
                       </button>
+                      {process.status === 'plan_ready' && (
+                        <button
+                          onClick={() => onViewPlan(process.id)}
+                          data-tooltip="Ver plan"
+                          aria-label="Ver plan"
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#0066CC] transition-colors"
+                        >
+                          <FileText className="w-4 h-4" />
+                        </button>
+                      )}
                       {process.status !== 'completed' && (
                         <button
                           onClick={() => setCompleteTarget(process.id)}

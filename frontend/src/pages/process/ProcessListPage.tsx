@@ -43,10 +43,10 @@ export const ProcessListPage = () => {
   };
 
   return (
-    <div className="p-4 lg:p-6 min-h-full">
+    <div className="p-4 lg:p-6 h-full flex flex-col min-h-0">
       {/* Enrichment: outer card with shadow + white bg for contrast against the app-bg page background */}
-      <div className="bg-white rounded-2xl border border-app-border shadow-md p-6 lg:p-8 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="bg-white rounded-2xl border border-app-border shadow-md p-6 lg:p-8 flex flex-col gap-6 h-full min-h-0">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
             <ClipboardList className="w-5 h-5 text-accent" />
@@ -65,7 +65,9 @@ export const ProcessListPage = () => {
         </button>
       </div>
 
-      <StatCards processes={processes ?? []} />
+      <div className="shrink-0">
+        <StatCards processes={processes ?? []} />
+      </div>
 
       {isError && (
         <ErrorState
@@ -86,24 +88,29 @@ export const ProcessListPage = () => {
       )}
 
       {!isLoading && !isError && (processes ?? []).length > 0 && (
-        <ProcessFilters
-          selectedEstados={selectedEstados}
-          setSelectedEstados={setSelectedEstados}
-          selectedNormas={selectedNormas}
-          setSelectedNormas={setSelectedNormas}
-          searchQuery={searchQuery}
-          setSearchQuery={setSearchQuery}
-        />
+        <div className="shrink-0">
+          <ProcessFilters
+            selectedEstados={selectedEstados}
+            setSelectedEstados={setSelectedEstados}
+            selectedNormas={selectedNormas}
+            setSelectedNormas={setSelectedNormas}
+            searchQuery={searchQuery}
+            setSearchQuery={setSearchQuery}
+          />
+        </div>
       )}
 
       {!isLoading && !isError && (processes ?? []).length > 0 && (
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-6">
-          <ProcessTable
-            processes={filtered}
-            onView={(id) => navigate(`/processes/${id}`)}
-            onDelete={handleDelete}
-          />
-          <div className="space-y-6">
+        <div className="flex flex-col xl:flex-row gap-6 flex-1 min-h-0">
+          <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+            <ProcessTable
+              processes={filtered}
+              onView={(id) => navigate(`/processes/${id}`)}
+              onViewPlan={(id) => navigate(`/processes/${id}/plan`)}
+              onDelete={handleDelete}
+            />
+          </div>
+          <div className="xl:w-80 shrink-0 min-h-0 overflow-y-auto pr-1 space-y-6">
             <ActivityWidget processes={processes ?? []} />
             <CompaniesWidget
               companies={companies}

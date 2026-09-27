@@ -32,6 +32,7 @@ export default {
         'stat-progreso': '#F59E0B',
         'stat-completado': '#10B981',
         'stat-revision': '#F97316',
+        'stat-plan': '#8B5CF6',
         // Status badge colors (plan palette)
         'status-in-progress-bg': '#DBEAFE',
         'status-in-progress-text': '#1D4ED8',

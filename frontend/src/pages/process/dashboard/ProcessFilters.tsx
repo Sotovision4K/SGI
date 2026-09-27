@@ -5,7 +5,7 @@ import { cn } from '../../../lib/cn';
 
 const ESTADO_OPTIONS = [
   { value: 'in_diagnosis', label: 'En diagnóstico' },
-  { value: 'plan_ready', label: 'En revisión' },
+  { value: 'plan_ready', label: 'Plan listo' },
   { value: 'in_progress', label: 'En progreso' },
   { value: 'completed', label: 'Completado' },
 ];

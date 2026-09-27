@@ -19,6 +19,8 @@ const mockGetPlan = vi.fn();
 const mockSaveFindings = vi.fn();
 const mockGeneratePlan = vi.fn();
 const mockUpdateTask = vi.fn();
+const mockGetTaskComments = vi.fn();
+const mockAddTaskComment = vi.fn();
 const toastSuccess = vi.fn();
 const toastDanger = vi.fn();
 
@@ -39,9 +41,11 @@ vi.mock('../api/plan', () => ({
   saveFindings: (...a: unknown[]) => mockSaveFindings(...a),
   generatePlan: (...a: unknown[]) => mockGeneratePlan(...a),
   updateTask: (...a: unknown[]) => mockUpdateTask(...a),
+  getTaskComments: (...a: unknown[]) => mockGetTaskComments(...a),
+  addTaskComment: (...a: unknown[]) => mockAddTaskComment(...a),
 }));
 
-import { useUpdateTask, usePlan } from './usePlan';
+import { useUpdateTask, usePlan, useTaskComments, useAddTaskComment } from './usePlan';
 import type { Plan, PlanTask } from '../api/plan';
 
 const UPDATED_TASK: PlanTask = {
@@ -51,6 +55,8 @@ const UPDATED_TASK: PlanTask = {
   priority: 'high',
   estimated_effort: '4 horas',
   owner_role: 'Responsable de calidad',
+  department: '',
+  status: 'pending',
   sort_order: 0,
   source_clause: 'ISO 9001 - 5.2',
   require_document: true,
@@ -101,6 +107,8 @@ describe('useUpdateTask', () => {
     mockSaveFindings.mockReset();
     mockGeneratePlan.mockReset();
     mockUpdateTask.mockReset();
+    mockGetTaskComments.mockReset();
+    mockAddTaskComment.mockReset();
     toastSuccess.mockReset();
     toastDanger.mockReset();
     mockGetToken.mockReset();
@@ -200,5 +208,96 @@ describe('usePlan', () => {
     await waitFor(() => {
       expect(seen).toContain(null);
     });
+  });
+});
+
+// ── useTaskComments / useAddTaskComment (kanban) ─────────────────────────────
+
+function CommentsQueryHarness({
+  processId,
+  taskId,
+  onData,
+}: {
+  processId: string;
+  taskId: string;
+  onData: (d: unknown) => void;
+}) {
+  const { data } = useTaskComments(processId, taskId);
+  useEffect(() => {
+    onData(data);
+  }, [data, onData]);
+  return null;
+}
+
+function AddCommentHarness({
+  processId,
+  onMutation,
+}: {
+  processId: string;
+  onMutation: (m: UseMutationResult<unknown, unknown, unknown, unknown>) => void;
+}) {
+  const mutation = useAddTaskComment(
+    processId,
+  ) as unknown as UseMutationResult<unknown, unknown, unknown, unknown>;
+  const started = useRef(false);
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    onMutation(mutation);
+  }, [mutation, onMutation]);
+  return null;
+}
+
+describe('useTaskComments', () => {
+  it('fetches comments via getTaskComments', async () => {
+    const client = makeClient();
+    mockGetTaskComments.mockResolvedValue([{ id: 'c-1', body: 'hola' }]);
+    const seen: unknown[] = [];
+
+    renderWithClient(
+      client,
+      <CommentsQueryHarness
+        processId="proc-1"
+        taskId="task-1"
+        onData={(d) => seen.push(d)}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(seen.length).toBeGreaterThan(0);
+    });
+    expect(mockGetTaskComments).toHaveBeenCalledWith(
+      'proc-1',
+      'task-1',
+      expect.objectContaining({ token: 'test-token' }),
+    );
+  });
+});
+
+describe('useAddTaskComment', () => {
+  it('adds a comment and invalidates the task-comments query', async () => {
+    const client = makeClient();
+    const invalidateSpy = vi.spyOn(client, 'invalidateQueries');
+    mockAddTaskComment.mockResolvedValue({ id: 'c-1', body: 'hola' });
+
+    const onMutation = (m: UseMutationResult<unknown, unknown, unknown, unknown>) => {
+      m.mutateAsync({ taskId: 'task-1', body: 'hola' });
+    };
+
+    renderWithClient(
+      client,
+      <AddCommentHarness processId="proc-1" onMutation={onMutation} />,
+    );
+
+    await waitFor(() => {
+      const keys = invalidateSpy.mock.calls.map((c) => c[0]).map((q) => q?.queryKey);
+      expect(keys).toContainEqual(['task-comments', 'proc-1', 'task-1']);
+    });
+    expect(mockAddTaskComment).toHaveBeenCalledWith(
+      'proc-1',
+      'task-1',
+      'hola',
+      { token: 'test-token' },
+    );
   });
 });

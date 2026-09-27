@@ -35,6 +35,8 @@ vi.mock('../../hooks/useProcess', () => ({
 vi.mock('../../hooks/usePlan', () => ({
   usePlan: () => planResult,
   useUpdateTask: () => ({ mutate: vi.fn(), isPending: false }),
+  useTaskComments: () => ({ data: [] }),
+  useAddTaskComment: () => ({ mutate: vi.fn(), isPending: false }),
 }));
 
 vi.mock('../../components/ui/toast', () => ({
@@ -63,6 +65,8 @@ const TASK_1: PlanTask = {
   priority: 'high',
   estimated_effort: '4 horas',
   owner_role: 'Responsable de calidad',
+  department: '',
+  status: 'pending',
   sort_order: 0,
   source_clause: 'ISO 9001 - 5.2',
   require_document: true,
@@ -76,6 +80,8 @@ const TASK_2: PlanTask = {
   priority: 'low',
   estimated_effort: '2 horas',
   owner_role: 'RRHH',
+  department: '',
+  status: 'started',
   sort_order: 1,
   source_clause: 'ISO 9001 - 7.2',
   require_document: false,
@@ -164,9 +170,11 @@ describe('PlanPage', () => {
     expect(screen.getByText('No se encontró el plan para este proceso.')).toBeInTheDocument();
   });
 
-  it('renders the plan read-only (no edit buttons)', () => {
+  it('renders the interactive kanban board (three columns)', () => {
     renderPage();
 
-    expect(screen.queryAllByRole('button', { name: 'Editar tarea' })).toHaveLength(0);
+    expect(screen.getByText('Pendiente')).toBeInTheDocument();
+    expect(screen.getByText('Iniciada')).toBeInTheDocument();
+    expect(screen.getByText('Completada')).toBeInTheDocument();
   });
 });

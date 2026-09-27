@@ -1,5 +1,6 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useForm, Controller, useWatch } from 'react-hook-form';
+import { useQueryClient } from '@tanstack/react-query';
 import { Loader2, AlertCircle, Sparkles, ArrowRight } from 'lucide-react';
 import { useQuestionnaire } from '../../../hooks/useQuestionnaire';
 import { savePreDiagnosis } from '../../../api/process';
@@ -50,6 +51,7 @@ export const StepPreDiagnosis = forwardRef<StepPreDiagnosisHandle, StepPreDiagno
     onProgressSave,
   }: StepPreDiagnosisProps, ref) {
   const { getToken } = useApiAuthBridge();
+  const queryClient = useQueryClient();
   const { data: questionnaire, isLoading, error: loadError } = useQuestionnaire('pre_diagnosis');
   const {
     register,
@@ -106,6 +108,10 @@ export const StepPreDiagnosis = forwardRef<StepPreDiagnosisHandle, StepPreDiagno
   async function onSubmit(data: Record<string, string>) {
     try {
       await savePreDiagnosis(processId, data, { token: getToken() });
+      // Pre-diagnosis now advances the process lifecycle (in_diagnosis → in_progress),
+      // so refresh the dashboard counts and the process detail on success.
+      queryClient.invalidateQueries({ queryKey: ['processes'] });
+      queryClient.invalidateQueries({ queryKey: ['process', processId] });
       onDone();
     } catch (err) {
       setError('root', { message: getErrorMessage(err) });

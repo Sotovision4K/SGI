@@ -5,7 +5,7 @@ function Table({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="table"
-      className={cn("relative w-full overflow-auto", className)}
+      className={cn("relative w-full overflow-y-auto", className)}
       {...props}
     />
   )
@@ -16,7 +16,7 @@ function TableHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="table-header"
       className={cn(
-        "border-b border-app-border bg-app-bg",
+        "sticky top-0 z-10 bg-white border-b border-app-border",
         className
       )}
       {...props}

@@ -1,4 +1,4 @@
-import { FileText, Clock, CheckCircle, AlertCircle } from 'lucide-react';
+import { FileText, Clock, CheckCircle, AlertCircle, ClipboardList } from 'lucide-react';
 import type { Process } from '../../../api/process';
 
 interface StatCardsProps {
@@ -30,25 +30,31 @@ const cards = [
     icon: AlertCircle,
     iconBg: 'bg-stat-revision',
   },
+  {
+    label: 'Planes generados',
+    key: 'plan' as const,
+    icon: ClipboardList,
+    iconBg: 'bg-stat-plan',
+  },
 ];
 
 export function StatCards({ processes }: StatCardsProps) {
   const total = processes.length;
   const inProgress = processes.filter((p) => p.status === 'in_progress').length;
   const completed = processes.filter((p) => p.status === 'completed').length;
-  const pendingReview = processes.filter(
-    (p) => p.status === 'in_diagnosis' || p.status === 'plan_ready',
-  ).length;
+  const pendingReview = processes.filter((p) => p.status === 'in_diagnosis').length;
+  const plansGenerated = processes.filter((p) => p.status === 'plan_ready').length;
 
   const values: Record<string, number> = {
     total,
     progreso: inProgress,
     completado: completed,
     revision: pendingReview,
+    plan: plansGenerated,
   };
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
       {cards.map((card) => {
         const Icon = card.icon;
         return (
