@@ -104,7 +104,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Estado</TableHead>
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Fecha inicio</TableHead>
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Última actualización</TableHead>
-            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold text-right">Acciones</TableHead>
+            <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold text-right flex-none w-52">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -124,10 +124,10 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
                       {shortId(process.id)}
                     </span>
                   </TableCell>
-                  <TableCell className="font-medium text-app-text text-sm truncate">
+                  <TableCell className="font-medium text-app-text text-sm truncate min-w-0">
                     {process.company_name || '(sin empresa)'}
                   </TableCell>
-                  <TableCell className="text-app-text text-sm truncate">
+                  <TableCell className="text-app-text text-sm truncate min-w-0">
                     {ISO_LABELS[process.iso_standard] ?? process.iso_standard}
                   </TableCell>
                   <TableCell>
@@ -135,7 +135,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
                       {status.label}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-app-muted text-sm truncate">
+                  <TableCell className="text-app-muted text-sm truncate min-w-0">
                     {formatDate(process.created_at)}
                   </TableCell>
                   <TableCell>
@@ -144,8 +144,8 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
                       {timeAgo(process.updated_at)}
                     </span>
                   </TableCell>
-                  <TableCell>
-                    <div className="flex items-center justify-end gap-1">
+                  <TableCell className="flex-none w-52">
+                    <div className="flex items-center justify-end gap-1 whitespace-nowrap">
                       <button
                         onClick={() => onView(process.id)}
                         data-tooltip="Ver detalles"
@@ -157,11 +157,11 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
                       {process.status === 'plan_ready' && (
                         <button
                           onClick={() => onViewPlan(process.id)}
-                          data-tooltip="Ver plan"
                           aria-label="Ver plan"
-                          className="w-8 h-8 flex items-center justify-center rounded-lg text-app-muted hover:bg-[#EEF2F8] hover:text-[#0066CC] transition-colors"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-app-accent bg-app-accent/10 rounded-lg hover:bg-app-accent/20 transition-colors"
                         >
-                          <FileText className="w-4 h-4" />
+                          <FileText className="w-3.5 h-3.5" />
+                          Ver plan
                         </button>
                       )}
                       {process.status !== 'completed' && (

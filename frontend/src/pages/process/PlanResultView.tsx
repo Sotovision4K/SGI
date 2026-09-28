@@ -474,7 +474,13 @@ export function PlanResultView({ plan }: { plan: Plan }) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<TaskStatus | null>(null);
 
-  const tasks = plan.tasks ?? [];
+  const tasks = (plan.tasks ?? []).map((t) => ({
+    ...t,
+    // Defensive normalization: an older backend may not return the kanban
+    // fields yet, so fall back so tasks still render (all in "Pendiente").
+    status: (t.status || 'pending') as TaskStatus,
+    department: t.department ?? '',
+  }));
   const selectedTask = tasks.find((t) => t.id === selectedTaskId) ?? null;
 
   const moveTask = (taskId: string, status: TaskStatus) => {
