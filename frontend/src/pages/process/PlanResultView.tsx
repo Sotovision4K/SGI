@@ -30,6 +30,15 @@ const PRIORITY_STYLES: Record<PlanTask['priority'], { bg: string; text: string; 
   low: { bg: 'bg-green-100', text: 'text-green-700', label: 'Baja', icon: CheckCircle2 },
 };
 
+// enrichment-intent: colored-top-border — each task card gets a distinct
+// top border matching its priority category so users can scan columns and
+// identify priority at a glance without reading badges.
+const CATEGORY_BORDER: Record<PlanTask['priority'], string> = {
+  high: 'border-t-2 border-t-red-400',
+  medium: 'border-t-2 border-t-amber-400',
+  low: 'border-t-2 border-t-green-400',
+};
+
 // Kanban columns, ordered left→right. DB stores the English value; labels are ES.
 const COLUMNS: { status: TaskStatus; label: string }[] = [
   { status: 'pending', label: 'Pendiente' },
@@ -320,6 +329,7 @@ function TaskCard({
   const style = PRIORITY_STYLES[task.priority];
   const Icon = style.icon;
   const department = task.department?.trim();
+  const borderColor = CATEGORY_BORDER[task.priority];
 
   return (
     <div
@@ -330,7 +340,7 @@ function TaskCard({
         onDragStart(task.id);
       }}
       onDragEnd={onDragEnd}
-      className="group border border-app-border rounded-lg bg-white hover:border-app-border-hover hover:shadow-sm transition-all cursor-grab active:cursor-grabbing"
+      className={`group border border-app-border rounded-lg bg-white hover:border-app-border-hover hover:shadow-sm transition-all cursor-grab active:cursor-grabbing ${borderColor}`}
     >
       <button
         type="button"

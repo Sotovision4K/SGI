@@ -25,3 +25,15 @@
 - `NewProcessWizardPage` → hero header with step context chip, card shell (`rounded-2xl shadow-md`), danger-outline Salir, bottom-center success toasts on process creation / plan ready.
 - Fixed pre-existing `tsc` errors in scope: removed dead `setSuggested(true)` call; replaced unused `@ts-expect-error` directive in the pre-diagnosis test.
 
+## 2026-09-28 — Plan page UI enrichment (outer container + colored top-border + inner scroll)
+
+**Files:** `frontend/src/pages/process/PlanPage.tsx`, `frontend/src/pages/process/PlanResultView.tsx`, `frontend/src/pages/process/ProcessDetailPage.tsx`
+
+- **Intention:** Improve scanability of the plan page by wrapping content in a single outer container card with a header divider that separates the _company · standard_ subtitle from the plan body, adding a colored top border to each task card matching its priority category (red=high, amber=medium, green=low), and constraining the layout so the body scrolls internally while the header stays fixed.
+- **Concerns:** responsiveness (cards collapse to 1 column, inner scroll on small screens), no business-logic changes, no new dependencies.
+
+### Details
+- `PlanPage` → outer container card (`bg-white border rounded-xl`) filling the viewport (`flex-1 min-h-0`); back-link in its own section; subtitle rendered as a tag-style pill for the ISO standard; plan body scrolls internally (`overflow-y-auto`) while the title/subtitle header stays fixed.
+- `PlanResultView` → added `CATEGORY_BORDER` constant mapping priority → `border-t-2` color classes; applied to the `TaskCard` wrapper div.
+- `ProcessDetailPage` → applied the same outer-container + inner-scroll pattern; header (title/subtitle/status actions) stays fixed, module grid scrolls internally; compacted module cards (`p-4`, smaller icon/heading, removed `min-h-[60px]`, `gap-4`) so all four fit on a single page.
+
