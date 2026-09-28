@@ -61,7 +61,7 @@ export function CompaniesPage() {
         ) : (
           <Table>
             <TableHeader>
-              <TableRow className="hover:bg-transparent">
+              <TableRow className="hover:bg-transparent min-w-[680px]">
                 <TableHead>Nombre</TableHead>
                 <TableHead>Industria</TableHead>
                 <TableHead>Responsable</TableHead>
@@ -72,14 +72,14 @@ export function CompaniesPage() {
             </TableHeader>
             <TableBody>
               {companies.length === 0 ? (
-                <TableRow className="hover:bg-transparent">
+                <TableRow className="hover:bg-transparent min-w-[680px]">
                   <TableCell className="text-center text-app-muted py-8" colSpan={6}>
                     No hay empresas registradas
                   </TableCell>
                 </TableRow>
               ) : (
                 companies.map((company) => (
-                  <TableRow key={company.company_id} className="hover:bg-app-bg/50">
+                  <TableRow key={company.company_id} className="hover:bg-app-bg/50 min-w-[680px]">
                     <TableCell className="font-medium text-app-text flex items-center gap-2">
                       <span className="w-8 h-8 rounded-lg bg-app-accent/10 flex items-center justify-center shrink-0">
                         <Building2 className="w-4 h-4 text-app-accent" />

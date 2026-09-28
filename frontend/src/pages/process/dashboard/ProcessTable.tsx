@@ -97,7 +97,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
       />
       <Table className="flex-1 min-h-0">
         <TableHeader>
-          <TableRow className="hover:bg-transparent">
+          <TableRow className="hover:bg-transparent min-w-[760px]">
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">ID</TableHead>
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Empresa</TableHead>
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">Norma</TableHead>
@@ -118,7 +118,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
             processes.map((process) => {
               const status = STATUS_CONFIG[process.status] ?? STATUS_CONFIG.in_diagnosis;
               return (
-                <TableRow key={process.id} className="hover:bg-[#F1F5F9]">
+                <TableRow key={process.id} className="hover:bg-[#F1F5F9] min-w-[760px]">
                   <TableCell>
                     <span className="inline-block font-mono text-xs text-app-muted px-2 py-0.5 rounded-full bg-[#F1F5F9]">
                       {shortId(process.id)}

@@ -45,7 +45,7 @@ export const ProcessListPage = () => {
   return (
     <div className="p-4 lg:p-6 h-full flex flex-col min-h-0">
       {/* Enrichment: outer card with shadow + white bg for contrast against the app-bg page background */}
-      <div className="bg-white rounded-2xl border border-app-border shadow-md p-6 lg:p-8 flex flex-col gap-6 h-full min-h-0">
+      <div className="bg-white rounded-2xl border border-app-border shadow-md p-4 sm:p-6 lg:p-8 flex flex-col gap-6 h-full min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">

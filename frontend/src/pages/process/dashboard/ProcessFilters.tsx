@@ -63,7 +63,7 @@ export function ProcessFilters({
         options={ESTADO_OPTIONS}
         selected={selectedEstados}
         onChange={setSelectedEstados}
-        className="min-w-[170px]"
+        className="w-full sm:w-auto sm:min-w-[170px]"
       />
 
       <MultiSelect
@@ -71,7 +71,7 @@ export function ProcessFilters({
         options={NORMA_OPTIONS}
         selected={selectedNormas}
         onChange={setSelectedNormas}
-        className="min-w-[170px]"
+        className="w-full sm:w-auto sm:min-w-[170px]"
       />
 
       {hasFilters && (

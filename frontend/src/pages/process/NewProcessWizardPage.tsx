@@ -139,7 +139,7 @@ export function NewProcessWizardPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden p-4 lg:p-6">
+    <div className="h-screen overflow-hidden p-3 sm:p-4 lg:p-6">
       <div className="max-w-4xl mx-auto h-full flex flex-col">
         {/* Enrichment: hero header gives the wizard page structure and a clear step context */}
         <header className="shrink-0 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -167,7 +167,7 @@ export function NewProcessWizardPage() {
 
         <div className="shrink-0"><WizardStepper current={step} steps={STEPS} /></div>
 
-        <div className="flex-1 min-h-0 bg-white rounded-2xl border border-app-border p-6 lg:p-8 shadow-md flex flex-col">
+        <div className="flex-1 min-h-0 bg-white rounded-2xl border border-app-border p-4 sm:p-6 lg:p-8 shadow-md flex flex-col">
           <div key={step} className="flex-1 min-h-0 flex flex-col animate-slide-in-right">
             {step === 0 && <StepSetup onCreated={handleCreated} onDirtyChange={setIsDirty} />}
             {step === 1 && processId && (

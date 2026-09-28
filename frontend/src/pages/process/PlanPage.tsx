@@ -57,7 +57,7 @@ export const PlanPage = () => {
           The card fills the viewport height and scrolls its body internally. */}
       <div className="flex-1 min-h-0 flex flex-col bg-white border border-app-border rounded-xl shadow-sm overflow-hidden">
         {/* Title & subtitle area */}
-        <div className="px-6 pt-6 pb-4 border-b border-app-border shrink-0">
+        <div className="px-4 sm:px-6 pt-6 pb-4 border-b border-app-border shrink-0">
           <h1 className="text-3xl font-bold text-app-text mb-2">Plan de acción</h1>
           {process && (
             <div className="flex flex-wrap items-center gap-2">
@@ -73,7 +73,7 @@ export const PlanPage = () => {
         </div>
 
         {/* Plan content — inner scroll */}
-        <div className="flex-1 min-h-0 px-6 py-6 overflow-y-auto">
+        <div className="flex-1 min-h-0 px-4 sm:px-6 py-6 overflow-y-auto">
           <PlanResultView plan={plan} />
         </div>
       </div>

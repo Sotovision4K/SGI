@@ -69,8 +69,8 @@ export const ProcessDetailPage = () => {
           body (the module grid) scrolls internally, matching PlanPage. */}
       <div className="flex-1 min-h-0 flex flex-col bg-white border border-app-border rounded-xl shadow-sm overflow-hidden">
         {/* Title & subtitle area */}
-        <div className="px-6 pt-6 pb-4 border-b border-app-border shrink-0">
-          <div className="flex items-center gap-4 mb-2">
+        <div className="px-4 sm:px-6 pt-6 pb-4 border-b border-app-border shrink-0">
+          <div className="flex flex-wrap items-center gap-4 mb-2">
             <h1 className="text-3xl font-bold text-app-text">
               {process.company_name || '(sin empresa)'}
             </h1>
@@ -129,7 +129,7 @@ export const ProcessDetailPage = () => {
         </div>
 
         {/* Module grid — inner scroll */}
-        <div className="flex-1 min-h-0 px-6 py-6 overflow-y-auto">
+        <div className="flex-1 min-h-0 px-4 sm:px-6 py-6 overflow-y-auto">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-app-border p-4 hover:shadow-md transition-shadow flex flex-col">
           <div className="w-9 h-9 bg-app-accent/10 rounded-lg flex items-center justify-center mb-3">
