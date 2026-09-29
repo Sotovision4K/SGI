@@ -76,7 +76,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
   const [reopenTarget, setReopenTarget] = useState<string | null>(null);
 
   return (
-    <div className="bg-white rounded-2xl border border-app-border shadow-sm overflow-hidden flex flex-col flex-1 min-h-0">
+    <div className="bg-white rounded-2xl border border-app-border shadow-sm overflow-hidden flex flex-col xl:flex-1 xl:min-h-0">
       <ConfirmDialog
         open={!!completeTarget}
         onOpenChange={(open) => { if (!open) setCompleteTarget(null); }}
@@ -95,7 +95,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
         onConfirm={() => { reopenProcess.mutate(reopenTarget!); setReopenTarget(null); }}
         loading={reopenProcess.isPending}
       />
-      <Table className="flex-1 min-h-0">
+      <Table className="xl:flex-1 xl:min-h-0">
         <TableHeader>
           <TableRow className="hover:bg-transparent min-w-[760px]">
             <TableHead className="text-xs uppercase tracking-wide text-app-muted font-semibold">ID</TableHead>

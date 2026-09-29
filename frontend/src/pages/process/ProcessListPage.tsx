@@ -43,9 +43,9 @@ export const ProcessListPage = () => {
   };
 
   return (
-    <div className="p-4 lg:p-6 h-full flex flex-col min-h-0">
+    <div className="p-4 lg:p-6 flex flex-col xl:h-full xl:min-h-0">
       {/* Enrichment: outer card with shadow + white bg for contrast against the app-bg page background */}
-      <div className="bg-white rounded-2xl border border-app-border shadow-md p-4 sm:p-6 lg:p-8 flex flex-col gap-6 h-full min-h-0">
+      <div className="bg-white rounded-2xl border border-app-border shadow-md p-4 sm:p-6 lg:p-8 flex flex-col gap-6 xl:h-full xl:min-h-0">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 shrink-0">
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-accent/10 flex items-center justify-center">
@@ -101,8 +101,8 @@ export const ProcessListPage = () => {
       )}
 
       {!isLoading && !isError && (processes ?? []).length > 0 && (
-        <div className="flex flex-col xl:flex-row gap-6 flex-1 min-h-0">
-          <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+        <div className="flex flex-col xl:flex-row gap-6 xl:flex-1 xl:min-h-0">
+          <div className="min-w-0 flex flex-col xl:flex-1 xl:min-h-0">
             <ProcessTable
               processes={filtered}
               onView={(id) => navigate(`/processes/${id}`)}
@@ -110,7 +110,7 @@ export const ProcessListPage = () => {
               onDelete={handleDelete}
             />
           </div>
-          <div className="xl:w-80 shrink-0 min-h-0 overflow-y-auto pr-1 space-y-6">
+          <div className="xl:w-80 shrink-0 xl:min-h-0 xl:overflow-y-auto pr-1 space-y-6">
             <ActivityWidget processes={processes ?? []} />
             <CompaniesWidget
               companies={companies}
