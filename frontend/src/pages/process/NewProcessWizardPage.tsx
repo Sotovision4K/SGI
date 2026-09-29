@@ -19,6 +19,7 @@ export function NewProcessWizardPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resumeProcessId = searchParams.get('processId');
+  const editDiagnosis = searchParams.get('edit') === 'true';
 
   const resume = useProcess(resumeProcessId ?? undefined);
 
@@ -47,7 +48,7 @@ export function NewProcessWizardPage() {
   const serverStep: Step = preDiagnosisDone ? 1 : 0;
   const draftStep = loadedDraft?.step ?? 0;
   const landingStep: Step = resumeProcessId
-    ? (Math.min(Math.max(1, serverStep, draftStep), 2) as Step)
+    ? (editDiagnosis ? 2 : (Math.min(Math.max(1, serverStep, draftStep), 2) as Step))
     : 0;
 
   // Adjust state during render (React's recommended pattern): apply the resume
@@ -60,10 +61,10 @@ export function NewProcessWizardPage() {
   // When resuming a process whose plan is already generated, redirect straight
   // to the dedicated plan page instead of landing on a wizard step.
   useEffect(() => {
-    if (resumeProcessId && hasPlan && !resume.isLoading) {
+    if (resumeProcessId && hasPlan && !resume.isLoading && !editDiagnosis) {
       navigate(`/processes/${resumeProcessId}/plan`);
     }
-  }, [resumeProcessId, hasPlan, resume.isLoading, navigate]);
+  }, [resumeProcessId, hasPlan, resume.isLoading, editDiagnosis, navigate]);
 
   const lastSavedTime = lastSaved ?? loadedDraft?.updatedAt ?? null;
 
@@ -139,7 +140,7 @@ export function NewProcessWizardPage() {
   }
 
   return (
-    <div className="h-screen overflow-hidden p-3 sm:p-4 lg:p-6">
+    <div className="h-full overflow-hidden p-3 sm:p-4 lg:p-6">
       <div className="max-w-4xl mx-auto h-full flex flex-col">
         {/* Enrichment: hero header gives the wizard page structure and a clear step context */}
         <header className="shrink-0 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">

@@ -139,12 +139,29 @@ export const ProcessDetailPage = () => {
           <p className="flex-1 text-app-muted text-sm mb-3">
             Evalúa el estado actual de tu empresa frente a los requisitos ISO.
           </p>
-          <Link
-            to={hasPlan ? `/processes/${processId}/plan` : `/processes/new?processId=${processId}`}
-            className="w-full py-1.5 px-4 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors text-center"
-          >
-            {ctaLabel}
-          </Link>
+          {hasPlan ? (
+            <div className="flex flex-col gap-2">
+              <Link
+                to={`/processes/${processId}/plan`}
+                className="w-full py-1.5 px-4 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors text-center"
+              >
+                Ver plan
+              </Link>
+              <Link
+                to={`/processes/new?processId=${processId}&edit=true`}
+                className="w-full py-1.5 px-4 border border-app-border text-app-text rounded-lg text-sm font-medium hover:bg-app-bg transition-colors text-center"
+              >
+                Editar diagnóstico
+              </Link>
+            </div>
+          ) : (
+            <Link
+              to={`/processes/new?processId=${processId}`}
+              className="w-full py-1.5 px-4 bg-app-primary text-white rounded-lg text-sm font-medium hover:bg-app-primary/90 transition-colors text-center"
+            >
+              {ctaLabel}
+            </Link>
+          )}
         </div>
 
         <div className="bg-white rounded-xl border border-app-border p-4 hover:shadow-md transition-shadow flex flex-col">

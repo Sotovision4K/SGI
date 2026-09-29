@@ -84,9 +84,9 @@ function ErrorSlot({ message }: { message?: string }) {
 }
 
 const PRIMARY_BTN =
-  'inline-flex items-center justify-center px-6 py-3 text-base font-semibold rounded-lg transition-all duration-200 bg-app-primary text-white hover:bg-app-primary/90 focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50 disabled:cursor-not-allowed';
+  'inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 text-base font-semibold rounded-lg transition-all duration-200 bg-app-primary text-white hover:bg-app-primary/90 focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50 disabled:cursor-not-allowed';
 const SECONDARY_BTN =
-  'inline-flex items-center justify-center px-6 py-3 text-base font-semibold rounded-lg transition-all duration-200 border border-app-border text-app-text hover:bg-app-bg focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50 disabled:cursor-not-allowed';
+  'inline-flex items-center justify-center w-full sm:w-auto px-6 py-3 text-base font-semibold rounded-lg transition-all duration-200 border border-app-border text-app-text hover:bg-app-bg focus:outline-none focus:ring-2 focus:ring-app-accent disabled:opacity-50 disabled:cursor-not-allowed';
 
 export function CompanyForm({
   variant,
@@ -255,7 +255,7 @@ export function CompanyForm({
         </p>
       )}
 
-      <div className="flex items-center gap-3 mt-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2">
         <button type="submit" className={PRIMARY_BTN} disabled={mutation.isPending}>
           Revisar
         </button>
@@ -297,7 +297,7 @@ export function CompanyForm({
         ))}
       </div>
 
-      <div className="flex items-center gap-3 mt-2">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-2">
         <button
           type="button"
           className={PRIMARY_BTN}

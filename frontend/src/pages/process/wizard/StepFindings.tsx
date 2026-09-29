@@ -126,9 +126,9 @@ export const StepFindings = forwardRef<StepFindingsHandle, StepFindingsProps>(
         <div className="space-y-6">
           {questionnaire.groups.map((group) => (
             <div key={group.id}>
-              <div className="flex items-baseline gap-2 mb-3">
+              <div className="flex flex-wrap items-baseline gap-2 mb-3">
                 <h3 className="text-lg font-semibold text-app-text">{group.title}</h3>
-                <span className="text-xs text-app-muted">{group.clauses.join(', ')}</span>
+                <span className="text-xs text-app-muted min-w-0 break-words">{group.clauses.join(', ')}</span>
               </div>
               <div className="space-y-4">
                 {group.questions.map((q) => (

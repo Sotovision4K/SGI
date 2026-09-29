@@ -1,5 +1,6 @@
 import * as React from "react"
 import * as DialogPrimitive from "@radix-ui/react-dialog"
+import { X } from "lucide-react"
 import { cn } from "../../lib/cn"
 
 const Dialog = DialogPrimitive.Root
@@ -33,6 +34,12 @@ function DialogContent({ className, children, ...props }: React.ComponentProps<t
         )}
         {...props}
       >
+        <DialogPrimitive.Close
+          className="absolute top-4 right-4 rounded-lg p-1.5 text-app-muted hover:bg-app-bg hover:text-app-text transition-colors"
+          aria-label="Cerrar"
+        >
+          <X className="w-5 h-5" />
+        </DialogPrimitive.Close>
         {children}
       </DialogPrimitive.Content>
     </DialogPortal>
@@ -44,7 +51,7 @@ function DialogHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="dialog-header"
-      className={cn("flex flex-col gap-1.5 mb-4", className)}
+      className={cn("flex flex-col gap-1.5 mb-4 pr-8", className)}
       {...props}
     />
   )
