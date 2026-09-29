@@ -121,6 +121,24 @@ class TestFindingLookupFiltersOnProcessId:
         assert "=" in sql
 
 
+class TestListProcessesWithCompanyUsesJoin:
+    """Regression: list_processes_with_company must emit a LEFT JOIN, not a
+    correlated scalar subquery (which ran one index lookup per process row)."""
+
+    @pytest.mark.asyncio
+    async def test_list_processes_with_company_uses_left_join(self, repo_with_captured_stmt):
+        repo, captured = repo_with_captured_stmt
+
+        result = await repo.list_processes_with_company()
+
+        # Empty fake DB → empty result, but the SELECT must have been issued.
+        assert result == []
+        assert len(captured) == 1
+        sql = _compile_sql(captured[0])
+        assert "LEFT OUTER JOIN company" in sql
+        assert "company.company_id = processes.company_id" in sql
+
+
 class TestPlanLookupFiltersOnProcessId:
     @pytest.mark.asyncio
     async def test_get_plan_filters_on_process_id_column(self, repo_with_captured_stmt):

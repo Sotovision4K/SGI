@@ -233,21 +233,21 @@ class ProcessRepository:
     ) -> list[tuple[Process, str | None]]:
         """List processes with their company name in a single query.
 
-        Uses a correlated scalar subquery (LEFT-join semantics): every process
-        is returned even when its company row is missing, in which case the
-        name is None. This replaces the previous N+1 per-process hydration in
-        the routes layer.
+        Uses a LEFT JOIN: every process is returned even when its company row is
+        missing, in which case the name is None. This replaces the previous N+1
+        per-process hydration in the routes layer, and the correlated scalar
+        subquery that ran one index lookup per process row.
         """
         if status not in (None, "active", "completed"):
             raise ValueError(f"Invalid status filter: {status!r}")
 
-        company_name = (
-            select(CompanyTable.name)
-            .where(CompanyTable.company_id == ProcessTable.company_id)
-            .scalar_subquery()
-        )
+        # Single LEFT JOIN instead of a correlated scalar subquery: the previous
+        # form ran one index lookup against `company` per process row (N+1 inside
+        # the DB). An outerjoin lets Postgres do one hash/merge join, and still
+        # returns every process with name=None when its company row is missing.
         stmt = (
-            select(ProcessTable, company_name.label("company_name"))
+            select(ProcessTable, CompanyTable.name)
+            .outerjoin(CompanyTable, CompanyTable.company_id == ProcessTable.company_id)
             .order_by(ProcessTable.created_at.desc())
         )
         if consultant_id is not None:
