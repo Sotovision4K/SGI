@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.finding import Finding
-from src.domain.entities.plan import TaskComment, TaskPriority, TaskStatus
+from src.domain.entities.plan import TaskPriority, TaskStatus
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
 from src.domain.entities.plan_job import PlanJob, make_default_segments
 from src.adapters.db.process_repository import ProcessRepository
