@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { useAuth } from 'react-oidc-context';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Mail, Lock, User, Phone, CreditCard, AlertCircle, ArrowRight, Building2, UserCircle, Briefcase } from 'lucide-react';
 import { Input } from '../../components/ui/Input';
 import { Button } from '../../components/ui/Button';
+import { LoadingScreen } from '../../components/ui/LoadingScreen';
 import { signUp, isUsernameExistsError } from '../../lib/auth';
 
 const businessTypes = [
@@ -56,6 +58,8 @@ export function SignUpPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const roleParam = searchParams.get('role');
+  const auth = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = auth;
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
@@ -74,6 +78,18 @@ export function SignUpPage() {
 
   // eslint-disable-next-line react-hooks/incompatible-library
   const selectedRole = watch('role');
+
+  // Authenticated (or still-restoring) users have no business registering —
+  // redirect them to the app instead of showing the form.
+  useEffect(() => {
+    if (isAuthenticated && !authLoading) {
+      navigate('/processes', { replace: true });
+    }
+  }, [isAuthenticated, authLoading, navigate]);
+
+  if (authLoading || isAuthenticated) {
+    return <LoadingScreen />;
+  }
 
 const onSubmit = async (data: SignUpFormData) => {
     setError(null);

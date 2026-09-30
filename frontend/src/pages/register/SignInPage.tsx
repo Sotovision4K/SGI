@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from 'react-oidc-context';
 import { ArrowRight, AlertCircle } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { LoadingScreen } from '../../components/ui/LoadingScreen';
 
 export function SignInPage() {
   const navigate = useNavigate();
@@ -28,12 +29,12 @@ export function SignInPage() {
     signinRedirect();
   };
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-bg-soft flex items-center justify-center">
-        <div className="text-text-muted">Cargando...</div>
-      </div>
-    );
+  // Show a loader while OIDC is restoring the session OR while a just-authenticated
+  // user is about to be redirected. Without the `isAuthenticated` check, the full
+  // sign-in form flashes for one render between the token exchange and the effect-driven
+  // navigation below (Cognito redirects back to this same route as the OAuth callback).
+  if (isLoading || isAuthenticated) {
+    return <LoadingScreen />;
   }
 
   return (

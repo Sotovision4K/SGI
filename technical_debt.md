@@ -186,3 +186,31 @@ here because the fix we shipped is a **stopgap**, not a final design.
   `_SEGMENT_TIMEOUT_SECONDS` < `LEASE_TTL_SECONDS` < Lambda timeout < visibility timeout
   with real margin; add a guard/test that a persisted plan with **zero tasks** cannot happen
   (e.g. a post-merge "no tasks" check or a prompt-level assertion).
+
+---
+
+# Frontend auth findings (2026-09-30)
+
+Tracked while fixing the post-login sign-in flash. Not from the security audit or the
+Stage-C smoke test — surfaced during UX review of the Cognito login flow.
+
+## TD-2 — OAuth callback lands on `/auth/signin` (no dedicated `/auth/callback` route)
+
+- **Source:** frontend — `frontend/src/pages/register/SignInPage.tsx`,
+  `frontend/src/lib/auth-config.tsx` (`redirect_uri: VITE_REDIRECT_URI`), the Cognito
+  `callback_urls` in `infra/environments/dev/main.tf`, and the build-time redirect in
+  `.github/workflows/frontend.yml`.
+- **Why it's debt:** the OAuth `redirect_uri` points at `/auth/signin`, so after Cognito
+  authenticates, the browser returns to the sign-in route and mounts `SignInPage` before
+  it redirects to `/processes`. We stopped the visible flash with a render guard
+  (`isLoading || isAuthenticated`), but that is a **stopgap**: the sign-in page is
+  semantically the wrong landing target for an auth callback, and the destination is
+  still derived from a `useEffect` navigation rather than a dedicated callback route.
+- **Proper fix:** add a dedicated `/auth/callback` route that only renders a spinner and
+  performs the post-login redirect (respecting the `state.from` deep link, with the same
+  open-redirect guard `from.startsWith('/')`). Repoint `VITE_REDIRECT_URI` to it in
+  `frontend/.env`, `frontend/.env.example`, and `.github/workflows/frontend.yml`
+  (`https://${{ steps.infra.outputs.CF_DOMAIN }}/auth/callback`), and add `/auth/callback`
+  to the Cognito `callback_urls` in `infra/environments/dev/main.tf` for both the
+  localhost and CloudFront origins. This requires a `terraform apply` on the deployed
+  `dev` environment before it can be shipped.

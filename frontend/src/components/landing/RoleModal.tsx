@@ -1,5 +1,6 @@
 import { Building2, UserCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useAuth } from 'react-oidc-context';
 
 interface RoleModalProps {
   isOpen: boolean;
@@ -8,11 +9,13 @@ interface RoleModalProps {
 
 export function RoleModal({ isOpen, onClose }: RoleModalProps) {
   const navigate = useNavigate();
+  const auth = useAuth();
   if (!isOpen) return null;
 
   const handleSelectRole = (event: React.MouseEvent<HTMLButtonElement>, role: string) => {
     event.preventDefault();
-    navigate(`/auth/signup?role=${role}`);
+    // Already-authenticated users shouldn't be sent to the registration flow.
+    navigate(auth.isAuthenticated ? '/processes' : `/auth/signup?role=${role}`, { replace: true });
     onClose();
   };
 

@@ -59,6 +59,9 @@ unzip_6.0-25ubuntu1.2_amd64.deb
 .opencode/context/fastapi-upgrade.md
 zip_3.0-11build1_amd64.deb
 
+# ── OpenCode local docs (kept on disk, excluded from the repo) ──────
+.opencode/docs/
+
 # ── Project documentation (may contain env-specific config) ─────────
 checkpoint.md
 DEPLOY_PLAN.md
