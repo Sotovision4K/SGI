@@ -19,7 +19,9 @@ export function NewProcessWizardPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resumeProcessId = searchParams.get('processId');
-  const editDiagnosis = searchParams.get('edit') === 'true';
+  const editParam = searchParams.get('edit');
+  const editDiagnosis = editParam === 'true' || editParam === 'diagnosis';
+  const editPreDiagnosis = editParam === 'prediagnosis';
 
   const resume = useProcess(resumeProcessId ?? undefined);
 
@@ -48,7 +50,7 @@ export function NewProcessWizardPage() {
   const serverStep: Step = preDiagnosisDone ? 1 : 0;
   const draftStep = loadedDraft?.step ?? 0;
   const landingStep: Step = resumeProcessId
-    ? (editDiagnosis ? 2 : (Math.min(Math.max(1, serverStep, draftStep), 2) as Step))
+    ? (editDiagnosis ? 2 : editPreDiagnosis ? 1 : (Math.min(Math.max(1, serverStep, draftStep), 2) as Step))
     : 0;
 
   // Adjust state during render (React's recommended pattern): apply the resume
@@ -61,10 +63,10 @@ export function NewProcessWizardPage() {
   // When resuming a process whose plan is already generated, redirect straight
   // to the dedicated plan page instead of landing on a wizard step.
   useEffect(() => {
-    if (resumeProcessId && hasPlan && !resume.isLoading && !editDiagnosis) {
+    if (resumeProcessId && hasPlan && !resume.isLoading && !editDiagnosis && !editPreDiagnosis) {
       navigate(`/processes/${resumeProcessId}/plan`);
     }
-  }, [resumeProcessId, hasPlan, resume.isLoading, editDiagnosis, navigate]);
+  }, [resumeProcessId, hasPlan, resume.isLoading, editDiagnosis, editPreDiagnosis, navigate]);
 
   const lastSavedTime = lastSaved ?? loadedDraft?.updatedAt ?? null;
 
@@ -99,7 +101,8 @@ export function NewProcessWizardPage() {
     if (processId) clearDraft(processId);
     setLastSaved(null);
     setIsDirty(false);
-    setStep(2);
+    if (editPreDiagnosis && processId) navigate(`/processes/${processId}`);
+    else setStep(2);
   };
 
   const handlePlanReady = () => {
@@ -180,7 +183,7 @@ export function NewProcessWizardPage() {
                 onDirtyChange={setIsDirty}
                 initialValues={initialPreDiagnosis}
                 initialSubStep={loadedDraft?.subStep}
-                startAtReview={preDiagnosisDone}
+                startAtReview={preDiagnosisDone && !editPreDiagnosis}
                 onProgressSave={handlePreDiagnosisProgress}
               />
             )}
