@@ -19,13 +19,13 @@ export const ProcessListPage = () => {
   const deleteProcess = useDeleteProcess();
 
   const [selectedEstados, setSelectedEstados] = useState<string[]>([]);
-  const [selectedNormas, setSelectedNormas] = useState<string[]>([]);
+  const [selectedModules, setSelectedModules] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
 
   const filtered = useMemo(() => {
     return (processes ?? []).filter((p) => {
       if (selectedEstados.length > 0 && !selectedEstados.includes(p.status)) return false;
-      if (selectedNormas.length > 0 && !selectedNormas.includes(p.iso_standard)) return false;
+      if (selectedModules.length > 0 && (!p.perfilamiento_module || !selectedModules.includes(p.perfilamiento_module))) return false;
       if (searchQuery.trim()) {
         const q = searchQuery.trim().toLowerCase();
         const matchesCompany = (p.company_name ?? '').toLowerCase().includes(q);
@@ -34,7 +34,7 @@ export const ProcessListPage = () => {
       }
       return true;
     });
-  }, [processes, selectedEstados, selectedNormas, searchQuery]);
+  }, [processes, selectedEstados, selectedModules, searchQuery]);
 
   const handleDelete = (id: string) => {
     if (window.confirm('¿Estás seguro de eliminar este proceso?')) {
@@ -92,8 +92,8 @@ export const ProcessListPage = () => {
           <ProcessFilters
             selectedEstados={selectedEstados}
             setSelectedEstados={setSelectedEstados}
-            selectedNormas={selectedNormas}
-            setSelectedNormas={setSelectedNormas}
+            selectedModules={selectedModules}
+            setSelectedModules={setSelectedModules}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
           />

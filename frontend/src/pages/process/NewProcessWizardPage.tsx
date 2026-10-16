@@ -1,129 +1,56 @@
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { ClipboardList } from 'lucide-react';
 import { WizardStepper } from './wizard/WizardStepper';
 import { StepSetup } from './wizard/StepSetup';
-import { StepPreDiagnosis, type StepPreDiagnosisHandle } from './wizard/StepPreDiagnosis';
-import { StepFindings, type StepFindingsHandle } from './wizard/StepFindings';
+import { StepPerfilamiento } from './wizard/StepPerfilamiento';
+import { StepAnalysis } from './wizard/StepAnalysis';
 import { toast } from '../../components/ui/toast';
 import { useProcess } from '../../hooks/useProcess';
-import { useFindings } from '../../hooks/usePlan';
-import { loadDraft, saveDraft, clearDraft, formatLastSaved } from '../../lib/process-draft';
+import type { PerfilamientoModule } from '../../api/process';
 
-type ISOStandard = 'iso9001' | 'iso14001' | 'iso45001';
 type Step = 0 | 1 | 2;
 
-const STEPS = ['Configuración', 'Pre-diagnóstico', 'Diagnóstico ISO'];
+const STEPS = ['Configuración', 'Perfilamiento', 'Análisis LLM'];
 
 export function NewProcessWizardPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const resumeProcessId = searchParams.get('processId');
-  const editParam = searchParams.get('edit');
-  const editDiagnosis = editParam === 'true' || editParam === 'diagnosis';
-  const editPreDiagnosis = editParam === 'prediagnosis';
+  const isEditing = searchParams.get('edit') != null;
 
   const resume = useProcess(resumeProcessId ?? undefined);
-
   const processData = resume?.data;
-  const preDiagnosisDone =
-    !!processData?.pre_diagnosis && Object.keys(processData.pre_diagnosis).length > 0;
-  const hasPlan = processData?.status === 'plan_ready';
-  const resumeFindings = useFindings(preDiagnosisDone ? resumeProcessId ?? null : null);
 
   const [step, setStep] = useState<Step>(0);
   const [createdProcessId, setCreatedProcessId] = useState<string | null>(null);
-  const [createdIso, setCreatedIso] = useState<ISOStandard | null>(null);
-  const [, setIsDirty] = useState(false);
-  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const [createdModule, setCreatedModule] = useState<PerfilamientoModule | null>(null);
   const [resumeApplied, setResumeApplied] = useState(false);
 
-  const preDiagnosisRef = useRef<StepPreDiagnosisHandle>(null);
-  const findingsRef = useRef<StepFindingsHandle>(null);
-
   const processId = resumeProcessId ?? createdProcessId;
-  const isoStandard = processData?.iso_standard ?? createdIso;
+  const module = processData?.perfilamiento_module ?? createdModule;
 
-  // Resume landing step, derived from server state + draft (never re-run step 0,
-  // which would create a duplicate process; clamp to the last wizard step).
-  const loadedDraft = resumeProcessId && processData ? loadDraft(resumeProcessId) : null;
-  const serverStep: Step = preDiagnosisDone ? 1 : 0;
-  const draftStep = loadedDraft?.step ?? 0;
-  const landingStep: Step = resumeProcessId
-    ? (editDiagnosis ? 2 : editPreDiagnosis ? 1 : (Math.min(Math.max(1, serverStep, draftStep), 2) as Step))
-    : 0;
+  // When resuming a process whose plan is already generated (and not explicitly
+  // editing), redirect to the detail page instead of landing on a wizard step.
+  useEffect(() => {
+    if (resumeProcessId && processData?.status === 'plan_ready' && !isEditing) {
+      navigate(`/processes/${resumeProcessId}`);
+    }
+  }, [resumeProcessId, processData?.status, isEditing, navigate]);
 
-  // Adjust state during render (React's recommended pattern): apply the resume
-  // landing step once per processId as soon as server data is available.
+  // Resume semantics: never re-run step 0 (it would create a duplicate process).
+  // Land on step 1 (Perfilamiento), seeded from server perfilamiento_answers.
   if (resumeProcessId && processData && !resumeApplied) {
     setResumeApplied(true);
-    setStep(landingStep);
+    setStep(1);
   }
 
-  // When resuming a process whose plan is already generated, redirect straight
-  // to the dedicated plan page instead of landing on a wizard step.
-  useEffect(() => {
-    if (resumeProcessId && hasPlan && !resume.isLoading && !editDiagnosis && !editPreDiagnosis) {
-      navigate(`/processes/${resumeProcessId}/plan`);
-    }
-  }, [resumeProcessId, hasPlan, resume.isLoading, editDiagnosis, editPreDiagnosis, navigate]);
-
-  const lastSavedTime = lastSaved ?? loadedDraft?.updatedAt ?? null;
-
-  const handleExit = useCallback(() => {
-    if (processId && step === 1 && preDiagnosisRef.current) {
-      const { answers, subStep } = preDiagnosisRef.current.getDraftState();
-      const updated = saveDraft(processId, { step: 1, subStep, preDiagnosis: answers });
-      if (updated) setLastSaved(updated.updatedAt);
-    } else if (processId && step === 2 && findingsRef.current) {
-      const { answers } = findingsRef.current.getDraftState();
-      const updated = saveDraft(processId, { step: 2, findings: answers });
-      if (updated) setLastSaved(updated.updatedAt);
-    }
-    navigate('/processes');
-  }, [processId, step, navigate]);
-
-  const handleCreated = (id: string, iso: ISOStandard) => {
+  const handleCreated = (id: string, module: PerfilamientoModule) => {
     setCreatedProcessId(id);
-    setCreatedIso(iso);
-    setIsDirty(false);
+    setCreatedModule(module);
     setStep(1);
     toast.success('Proceso creado correctamente', { position: 'bottom-center' });
   };
-
-  const handlePreDiagnosisProgress = useCallback((answers: Record<string, string>, nextSubStep: number) => {
-    if (!processId) return;
-    const updated = saveDraft(processId, { step: 1, subStep: nextSubStep, preDiagnosis: answers });
-    if (updated) setLastSaved(updated.updatedAt);
-  }, [processId]);
-
-  const handlePreDiagnosisDone = () => {
-    if (processId) clearDraft(processId);
-    setLastSaved(null);
-    setIsDirty(false);
-    if (editPreDiagnosis && processId) navigate(`/processes/${processId}`);
-    else setStep(2);
-  };
-
-  const handlePlanReady = () => {
-    if (processId) clearDraft(processId);
-    setLastSaved(null);
-    setIsDirty(false);
-    toast.success('Plan de acción generado', { position: 'bottom-center' });
-    if (processId) navigate(`/processes/${processId}/plan`);
-  };
-
-  const showAutosave = step === 1 || step === 2;
-
-  // Resume-mode seeding precedence: server > draft > questionnaire defaults.
-  const initialPreDiagnosis =
-    (processData?.pre_diagnosis && Object.keys(processData.pre_diagnosis).length > 0
-      ? processData.pre_diagnosis
-      : loadedDraft?.preDiagnosis) ?? undefined;
-  const initialFindings =
-    (resumeFindings.data?.answers && Object.keys(resumeFindings.data.answers).length > 0
-      ? resumeFindings.data.answers
-      : loadedDraft?.findings) ?? undefined;
 
   if (resumeProcessId && !resumeApplied) {
     if (resume?.isLoading) {
@@ -140,7 +67,16 @@ export function NewProcessWizardPage() {
         </div>
       );
     }
+    if (processData === null) {
+      return (
+        <div className="min-h-screen flex items-center justify-center text-app-muted">
+          Proceso no encontrado.
+        </div>
+      );
+    }
   }
+
+  const perfilamientoAnswers = processData?.perfilamiento_answers as Record<string, string> | undefined;
 
   return (
     <div className="h-full overflow-hidden p-3 sm:p-4 lg:p-6">
@@ -152,49 +88,32 @@ export function NewProcessWizardPage() {
               <ClipboardList className="w-5 h-5 text-app-accent" aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-app-text">Nuevo Proceso de Certificación</h1>
-              <p className="text-app-muted mt-0.5">Complete los pasos para iniciar su certificación ISO</p>
+              <h1 className="text-2xl font-bold text-app-text">Nuevo Proceso</h1>
+              <p className="text-app-muted mt-0.5">Complete los pasos para iniciar el proceso</p>
             </div>
           </div>
-          <div className="flex flex-col items-end gap-1">
-            {showAutosave && (
-              <span className="text-xs text-app-muted">
-                Guardado automático activado · Último guardado:{' '}
-                {lastSavedTime ? formatLastSaved(lastSavedTime) : 'ahora'}
-              </span>
-            )}
-            <span className="px-3 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
-              Paso {step + 1} de {STEPS.length} · {STEPS[step]}
-            </span>
-          </div>
+          <span className="px-3 py-1 rounded-full bg-app-accent/10 text-app-accent text-xs font-semibold">
+            Paso {step + 1} de {STEPS.length} · {STEPS[step]}
+          </span>
         </header>
 
         <div className="shrink-0"><WizardStepper current={step} steps={STEPS} /></div>
 
         <div className="flex-1 min-h-0 bg-white rounded-2xl border border-app-border p-4 sm:p-6 lg:p-8 shadow-md flex flex-col">
           <div key={step} className="flex-1 min-h-0 flex flex-col animate-slide-in-right">
-            {step === 0 && <StepSetup onCreated={handleCreated} onDirtyChange={setIsDirty} />}
-            {step === 1 && processId && (
-              <StepPreDiagnosis
-                ref={preDiagnosisRef}
+            {step === 0 && <StepSetup onCreated={handleCreated} />}
+            {step === 1 && processId && module && (
+              <StepPerfilamiento
                 processId={processId}
-                isoStandard={isoStandard!}
-                onDone={handlePreDiagnosisDone}
-                onDirtyChange={setIsDirty}
-                initialValues={initialPreDiagnosis}
-                initialSubStep={loadedDraft?.subStep}
-                startAtReview={preDiagnosisDone && !editPreDiagnosis}
-                onProgressSave={handlePreDiagnosisProgress}
+                module={module}
+                onDone={() => setStep(2)}
+                initialValues={perfilamientoAnswers}
               />
             )}
-            {step === 2 && processId && isoStandard && (
-              <StepFindings
-                ref={findingsRef}
+            {step === 2 && processId && (
+              <StepAnalysis
                 processId={processId}
-                isoStandard={isoStandard}
-                onPlanReady={handlePlanReady}
-                onDirtyChange={setIsDirty}
-                initialValues={initialFindings}
+                onDone={() => navigate(`/processes/${processId}`)}
               />
             )}
           </div>
@@ -203,7 +122,7 @@ export function NewProcessWizardPage() {
         {/* Footer */}
         <footer className="shrink-0 flex justify-between mt-6">
           <button
-            onClick={handleExit}
+            onClick={() => navigate('/processes')}
             className="px-4 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-medium hover:bg-red-50 transition-colors"
           >
             Salir

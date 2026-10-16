@@ -15,7 +15,7 @@
     "architect": {
         "description": "Designs the overall architecture of the application",
         "mode": "subagent",
-        "model": "opencode-go/glm-5.1",
+        "model": "opencode-go/deepseek-v4-pro",
         "prompt": "{file:prompts/architect.txt}",
         "tools": {
           "write": false,
@@ -25,7 +25,7 @@
     "error-build-fixer": {
         "description": "Handles build errors and provides fixes. Use when there are build errors in the project.",
         "mode": "subagent",
-        "model": "opencode-go/glm-5.1",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "prompt": "{file:prompts/error-builder.txt}",
         "tools": {
         "read": true,
@@ -65,7 +65,7 @@
     "tdd-developer": {
         "description": "Writes tests before implementation code. Use when there is a need for high test coverage and maintainable code.",
         "mode": "subagent",
-        "model": "opencode-go/glm-5.1",
+        "model": "opencode-go/deepseek-v4.1-flash",
         "prompt": "{file:prompts/tdd-developer.txt}",
         "tools": {
         "read": true,

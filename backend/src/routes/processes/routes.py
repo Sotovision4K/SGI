@@ -4,18 +4,25 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from src.config.settings import Settings, get_settings
 from src.domain.entities.finding import Finding
 from src.domain.entities.plan import TaskPriority, TaskStatus
-from src.domain.entities.process import Process, ProcessStatus, IsoStandard
+from src.domain.entities.process import Process, ProcessStatus, PerfilamientoModule
+from src.domain.entities.profiling import StrictProfilingResult
 from src.domain.entities.plan_job import PlanJob, make_default_segments
 from src.adapters.db.process_repository import ProcessRepository
 from src.adapters.db.company_repository import CompanyRepository
 from src.adapters.queue.queue_port import QueuePort
 from src.adapters.queue.sqs_adapter import get_queue_adapter
-from src.errors import GenerationLimitError, MissingFindingsError, QueueEnqueueError, JobErrorCode
+from src.errors import (
+    GenerationLimitError,
+    MissingFindingsError,
+    ProcessNotFoundError,
+    QueueEnqueueError,
+    JobErrorCode,
+)
 from src.routes.rate_limit import check_rate_limit
 from src.adapters.email.email_port import EmailPort
 from src.adapters.email.ses_adapter import get_email_adapter
@@ -53,7 +60,9 @@ class ProcessListItem(BaseModel):
     consultant_id: str
     company_id: str
     company_name: str | None = None
-    iso_standard: str
+    iso_standard: str | None
+    perfilamiento_module: str | None = None
+    needs_certification: bool
     status: str
     created_at: str
     updated_at: str
@@ -65,8 +74,11 @@ class ProcessListResponse(BaseModel):
 
 
 class CreateProcessRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     company_id: UUID
-    iso_standard: IsoStandard
+    perfilamiento_module: PerfilamientoModule
+    needs_certification: bool = False
 
 
 class ProcessDetailResponse(BaseModel):
@@ -74,11 +86,20 @@ class ProcessDetailResponse(BaseModel):
     consultant_id: str
     company_id: str
     company_name: str | None = None
-    iso_standard: str
+    iso_standard: str | None
+    perfilamiento_module: str | None = None
+    needs_certification: bool
     status: str
     created_at: str
     updated_at: str
     pre_diagnosis: dict[str, Any] = Field(default_factory=dict)
+    perfilamiento_answers: dict[str, Any] = Field(default_factory=dict)
+    analysis_result: dict[str, Any] = Field(default_factory=dict)
+
+
+class CheckDuplicateResponse(BaseModel):
+    taken_modules: list[str] = Field(default_factory=list)
+    taken_iso_standards: list[str] = Field(default_factory=list)
 
 
 # Shared answer-shape rules (findings + pre-diagnosis): each answer value is
@@ -195,7 +216,9 @@ def _process_to_item(process: Process, company_name: str | None) -> ProcessListI
         consultant_id=str(process.consultant_id),
         company_id=str(process.company_id),
         company_name=company_name,
-        iso_standard=process.iso_standard.value,
+        iso_standard=process.iso_standard.value if process.iso_standard else None,
+        perfilamiento_module=process.perfilamiento_module.value if process.perfilamiento_module else None,
+        needs_certification=process.needs_certification,
         status=process.status.value,
         created_at=process.created_at.isoformat(),
         updated_at=process.updated_at.isoformat(),
@@ -208,12 +231,32 @@ def _process_to_detail(process: Process, company_name: str | None) -> ProcessDet
         consultant_id=str(process.consultant_id),
         company_id=str(process.company_id),
         company_name=company_name,
-        iso_standard=process.iso_standard.value,
+        iso_standard=process.iso_standard.value if process.iso_standard else None,
+        perfilamiento_module=process.perfilamiento_module.value if process.perfilamiento_module else None,
+        needs_certification=process.needs_certification,
         status=process.status.value,
         created_at=process.created_at.isoformat(),
         updated_at=process.updated_at.isoformat(),
         pre_diagnosis=process.pre_diagnosis,
+        perfilamiento_answers=process.perfilamiento_answers,
+        analysis_result=process.analysis_result,
     )
+
+
+async def _hydrate_and_detail(process: Process, settings: Settings) -> ProcessDetailResponse:
+    """Resolve the company name and build the detail response in one step."""
+    name = await _hydrate_company_name(process.company_id, settings)
+    return _process_to_detail(process, name)
+
+
+async def _process_detail(
+    process_id: UUID, repo: ProcessRepository, settings: Settings
+) -> ProcessDetailResponse:
+    """Re-fetch a process (e.g. after a mutation) and return its detail view."""
+    process = await repo.get_process(process_id)
+    if process is None:
+        raise ProcessNotFoundError("Proceso no encontrado")
+    return await _hydrate_and_detail(process, settings)
 
 
 # ---- Authorization -----------------------------------------------------------
@@ -227,7 +270,7 @@ async def _require_process_owner(
     """Fetch a process and verify the current user owns it. Raises 404 always."""
     process = await repo.get_process(process_id)
     if process is None or str(process.consultant_id) != current_user.get("sub", ""):
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
+        raise ProcessNotFoundError("Proceso no encontrado")
     return process
 
 
@@ -253,6 +296,27 @@ class UpdatePreDiagnosisRequest(BaseModel):
                     f"El valor de '{key}' excede el límite de {_MAX_ANSWER_LENGTH} caracteres"
                 )
         return v
+
+
+class UpdatePerfilamientoRequest(UpdatePreDiagnosisRequest):
+    pain_points: str = Field(default="", max_length=5000)
+
+
+class AnalysisUpdateRequest(BaseModel):
+    """Request body for ``PUT /processes/{id}/analysis``.
+
+    The nested ``StrictProfilingResult`` is validated by FastAPI as part of the
+    request body, so a malformed payload yields the framework's native 422 with
+    field-level error details — no manual try/except in the route.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    analysis_result: StrictProfilingResult
+
+
+class NeedsCertificationRequest(BaseModel):
+    value: bool
 
 
 # ---- Endpoints -------------------------------------------------------------
@@ -285,10 +349,26 @@ async def create_process(
     sub = current_user.get("sub")
     if not sub:
         raise HTTPException(status_code=400, detail="Sub claim requerido")
+
+    # Resolve the company once and verify ownership before creating anything:
+    # the caller may only create a process against their own company (prevents
+    # cross-tenant IDOR and the leak/trigger of another auditor's welcome email).
+    company = await company_repo.get_company(payload.company_id)
+    if company is None:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    if company.get("user_id") != sub:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    # Certification is deferred to a later step (needs_certification only flags
+    # intent up front), so iso_standard stays None and the process starts at
+    # PROFILING_PENDING.
     process = Process(
         consultant_id=UUID(sub),
         company_id=payload.company_id,
-        iso_standard=payload.iso_standard,
+        iso_standard=None,
+        perfilamiento_module=payload.perfilamiento_module,
+        needs_certification=payload.needs_certification,
+        status=ProcessStatus.PROFILING_PENDING,
     )
     created = await repo.create_process(process)
     name = await _hydrate_company_name(created.company_id, settings)
@@ -296,18 +376,44 @@ async def create_process(
     # Fire-and-forget welcome email to the company's contact. Errors are
     # logged and swallowed by the adapter; this never affects the response.
     try:
-        company = await company_repo.get_company(payload.company_id)
-        contact_email = company.get("contact_email") if company else None
+        contact_email = company.get("contact_email")
         if contact_email:
             await email_adapter.send_welcome_email(
                 to=contact_email,
                 company_name=name or "",
-                iso_standard=created.iso_standard.value,
+                iso_standard=created.iso_standard.value if created.iso_standard else "",
             )
     except Exception as exc:  # noqa: BLE001 — email must never break process creation
         logger.warning("Welcome email failed for process %s: %s", created.id, exc)
 
     return _process_to_detail(created, name)
+
+
+@router.get("/check-duplicate", response_model=CheckDuplicateResponse)
+async def check_duplicate(
+    company_id: UUID,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+) -> CheckDuplicateResponse:
+    """Return the requirement/certification slots already taken for a company.
+
+    Scoped to the caller (consultant_id) so it never leaks another auditor's
+    processes. Active = any status except COMPLETED.
+    """
+    sub = current_user.get("sub")
+    if not sub:
+        raise HTTPException(status_code=400, detail="Sub claim requerido")
+    processes = await repo.list_active_by_company(company_id=company_id, consultant_id=UUID(sub))
+    taken_modules = sorted(
+        {p.perfilamiento_module.value for p in processes if p.perfilamiento_module}
+    )
+    taken_iso_standards = sorted(
+        {p.iso_standard.value for p in processes if p.iso_standard}
+    )
+    return CheckDuplicateResponse(
+        taken_modules=taken_modules,
+        taken_iso_standards=taken_iso_standards,
+    )
 
 
 @router.get("/{process_id}", response_model=ProcessDetailResponse)
@@ -317,8 +423,7 @@ async def get_process(
     repo: ProcessRepositoryDep,
 ) -> ProcessDetailResponse:
     process = await _require_process_owner(process_id, repo, current_user)
-    name = await _hydrate_company_name(process.company_id, get_settings())
-    return _process_to_detail(process, name)
+    return await _hydrate_and_detail(process, get_settings())
 
 
 @router.delete("/{process_id}", status_code=204)
@@ -347,11 +452,7 @@ async def complete_process(
     if process.status == ProcessStatus.COMPLETED:
         raise HTTPException(status_code=409, detail="El proceso ya está completado")
     await repo.update_process_status(process_id, ProcessStatus.COMPLETED)
-    refreshed = await repo.get_process(process_id)
-    if refreshed is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
-    name = await _hydrate_company_name(refreshed.company_id, settings)
-    return _process_to_detail(refreshed, name)
+    return await _process_detail(process_id, repo, settings)
 
 
 @router.post("/{process_id}/reopen", response_model=ProcessDetailResponse)
@@ -366,11 +467,7 @@ async def reopen_process(
     if process.status != ProcessStatus.COMPLETED:
         raise HTTPException(status_code=409, detail="El proceso no está completado")
     await repo.update_process_status(process_id, ProcessStatus.IN_PROGRESS)
-    refreshed = await repo.get_process(process_id)
-    if refreshed is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
-    name = await _hydrate_company_name(refreshed.company_id, settings)
-    return _process_to_detail(refreshed, name)
+    return await _process_detail(process_id, repo, settings)
 
 
 # ---- Findings --------------------------------------------------------------
@@ -435,11 +532,58 @@ async def update_pre_diagnosis(
     """Persist pre-diagnosis answers for a process. Requires process ownership."""
     await _require_process_owner(process_id, repo, current_user)
     await repo.update_pre_diagnosis(process_id, payload.answers)
-    refreshed = await repo.get_process(process_id)
-    if refreshed is None:
-        raise HTTPException(status_code=404, detail="Proceso no encontrado")
-    name = await _hydrate_company_name(refreshed.company_id, settings)
-    return _process_to_detail(refreshed, name)
+    return await _process_detail(process_id, repo, settings)
+
+
+# ---- Perfilamiento ---------------------------------------------------------
+
+
+@router.put("/{process_id}/perfilamiento", response_model=ProcessDetailResponse)
+async def update_perfilamiento(
+    process_id: UUID,
+    payload: UpdatePerfilamientoRequest,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    """Persist perfilamiento answers + pain points. PROFILING_PENDING → IN_DIAGNOSIS."""
+    await _require_process_owner(process_id, repo, current_user)
+    saved = await repo.update_perfilamiento(process_id, payload.answers, payload.pain_points)
+    return await _hydrate_and_detail(saved, settings)
+
+
+@router.put("/{process_id}/analysis", response_model=ProcessDetailResponse)
+async def update_analysis(
+    process_id: UUID,
+    payload: AnalysisUpdateRequest,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    """Persist the strict-validated LLM analysis result.
+
+    The body model (``AnalysisUpdateRequest``) validates the payload, so FastAPI
+    returns its native 422 for malformed input before this handler runs.
+    Transition → plan_ready is guarded in the repository: no skip from
+    profiling_pending, no downgrade of completed.
+    """
+    await _require_process_owner(process_id, repo, current_user)
+    saved = await repo.update_analysis(process_id, payload.analysis_result.model_dump(mode="json"))
+    return await _hydrate_and_detail(saved, settings)
+
+
+@router.put("/{process_id}/needs-certification", response_model=ProcessDetailResponse)
+async def update_needs_certification(
+    process_id: UUID,
+    payload: NeedsCertificationRequest,
+    current_user: CurrentUserDep,
+    repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
+) -> ProcessDetailResponse:
+    """Set whether the process needs an ISO certification (opt in/out)."""
+    await _require_process_owner(process_id, repo, current_user)
+    saved = await repo.update_needs_certification(process_id, payload.value)
+    return await _hydrate_and_detail(saved, settings)
 
 
 # ---- Plan ------------------------------------------------------------------
@@ -614,6 +758,15 @@ async def generate_plan(
     """
     check_rate_limit(current_user.get("sub", "unknown"), max_requests=5, window=60)
     process = await _require_process_owner(process_id, repo, current_user)
+
+    # Certification is a deferred user decision: the ISO plan pipeline is not
+    # available until an ISO is chosen (previously the missing-ISO case produced
+    # a cryptic SEGMENT_GENERATION_FAILED job downstream).
+    if process.iso_standard is None:
+        raise HTTPException(
+            status_code=409,
+            detail="El proceso no tiene una norma ISO asociada; la generación del plan pertenece al paso de certificación",
+        )
 
     finding = await repo.get_finding(process_id)
     if finding is None or not finding.answers:

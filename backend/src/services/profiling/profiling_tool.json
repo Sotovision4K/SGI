@@ -1,0 +1,92 @@
+{
+  "name": "emit_profiling_analysis",
+  "description": "Between the profiling answers and the auditor's pain points to produce a structured diagnosis: a narrative of the most important pain points, a cost estimate, a time estimate, and an action plan. Call this exactly once with the complete analysis.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "pain_points_analysis": {
+        "type": "string",
+        "description": "Markdown narrative analysing the most important pain points, ordered by impact, grounded in the profiling answers and the auditor's notes."
+      },
+      "cost_estimation": {
+        "type": "object",
+        "properties": {
+          "range_cop": {
+            "type": "string",
+            "description": "Estimated cost range in Colombian pesos (COP), e.g. '30 a 80 millones COP'."
+          },
+          "breakdown": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Line items that make up the estimated cost."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Confidence in the cost estimate given the available context."
+          }
+        },
+        "required": ["range_cop"]
+      },
+      "time_estimation": {
+        "type": "object",
+        "properties": {
+          "months": {
+            "type": "integer",
+            "description": "Estimated total duration in months."
+          },
+          "phases": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Named phases of the estimated timeline."
+          },
+          "confidence": {
+            "type": "string",
+            "enum": ["low", "medium", "high"],
+            "description": "Confidence in the time estimate given the available context."
+          }
+        },
+        "required": ["months"]
+      },
+      "action_plan": {
+        "type": "object",
+        "properties": {
+          "phases": {
+            "type": "array",
+            "description": "Ordered implementation phases.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "description": "Phase name."
+                },
+                "duration_weeks": {
+                  "type": "integer",
+                  "description": "Estimated duration of the phase in weeks."
+                },
+                "activities": {
+                  "type": "array",
+                  "items": { "type": "string" },
+                  "description": "Activities carried out in the phase."
+                }
+              },
+              "required": ["name"]
+            }
+          },
+          "milestones": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Key milestones marking progress."
+          }
+        }
+      }
+    },
+    "required": [
+      "pain_points_analysis",
+      "cost_estimation",
+      "time_estimation",
+      "action_plan"
+    ]
+  }
+}

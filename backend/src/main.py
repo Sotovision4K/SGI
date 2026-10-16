@@ -10,11 +10,17 @@ from pydantic import ValidationError
 from sqlmodel import text
 
 from src.config.settings import get_settings
-from src.errors import GenerationLimitError, MissingFindingsError, QueueEnqueueError
+from src.errors import (
+    GenerationLimitError,
+    MissingFindingsError,
+    ProcessNotFoundError,
+    QueueEnqueueError,
+)
 from src.routes.user.routes import router as users_router
 from src.routes.processes.routes import router as processes_router
 from src.routes.companies.routes import router as companies_router
 from src.routes.questionnaires.routes import router as questionnaires_router
+from src.routes.profiling.routes import router as profiling_router
 from src.adapters.db.user_repository import get_engine
 
 logger = logging.getLogger(__name__)
@@ -71,6 +77,7 @@ app.include_router(users_router)
 app.include_router(processes_router)
 app.include_router(companies_router)
 app.include_router(questionnaires_router)
+app.include_router(profiling_router)
 
 
 @app.get("/health", tags=["health"])
@@ -79,6 +86,11 @@ async def health_check():
 
 
 # ---- Plan-generation error → HTTP mapping (spec §2) -------------------------
+
+
+@app.exception_handler(ProcessNotFoundError)
+async def _process_not_found_handler(request: Request, exc: ProcessNotFoundError):
+    return JSONResponse(status_code=404, content={"detail": "Proceso no encontrado"})
 
 
 @app.exception_handler(MissingFindingsError)

@@ -11,7 +11,7 @@ import uuid
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.pool import StaticPool
-from sqlmodel import SQLModel, select
+from sqlmodel import SQLModel
 
 from src.adapters.db.process_repository import ProcessRepository, ProcessTable
 from src.domain.entities.plan import Plan, Task, TaskPriority

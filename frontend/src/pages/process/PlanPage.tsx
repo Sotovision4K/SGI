@@ -1,6 +1,7 @@
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import { useProcess } from '../../hooks/useProcess';
+import { processRequirementLabel } from '../../api/process';
 import { usePlan } from '../../hooks/usePlan';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { getErrorMessage } from '../../lib/error-utils';
@@ -66,7 +67,7 @@ export const PlanPage = () => {
               </span>
               <span className="text-sm text-app-muted">·</span>
               <span className="inline-flex items-center rounded-full bg-app-bg px-3 py-1 text-xs font-medium text-app-muted">
-                {process.iso_standard}
+                {processRequirementLabel(process)}
               </span>
             </div>
           )}

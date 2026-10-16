@@ -3,15 +3,15 @@ import logging
 import uuid
 
 from sqlmodel import SQLModel, Field, select
-from sqlalchemy import update, or_, and_
+from sqlalchemy import update, or_, and_, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.entities.process import Process, ProcessStatus, IsoStandard
+from src.domain.entities.process import Process, ProcessStatus, IsoStandard, PerfilamientoModule
 from src.domain.entities.finding import Finding
 from src.domain.entities.plan import Plan, Task, TaskComment, TaskPriority, TaskStatus
 from src.domain.entities.audit_log import AuditLogLLM
 from src.domain.entities.plan_job import PlanJob, PlanJobStatus
-from src.errors import JobErrorCode, LeaseLostError
+from src.errors import JobErrorCode, LeaseLostError, ProcessNotFoundError
 from src.adapters.db.user_repository import CompanyTable, get_engine
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,11 @@ class ProcessTable(SQLModel, table=True):
     consultant_id: uuid.UUID = Field(index=True)
     company_id: uuid.UUID = Field(index=True)
     pre_diagnosis: str = Field(default="{}")
-    iso_standard: str = Field(max_length=20, index=True)
+    iso_standard: str | None = Field(default=None, max_length=20, index=True)
+    perfilamiento_module: str | None = Field(default=None, max_length=20, index=True)
+    needs_certification: bool = Field(default=False)
+    perfilamiento_answers: str = Field(default="{}")
+    analysis_result: str = Field(default="{}")
     status: str = Field(max_length=20, default="in_diagnosis", index=True)
     created_at: str
     updated_at: str
@@ -189,7 +193,13 @@ class ProcessRepository:
                 consultant_id=process.consultant_id,
                 company_id=process.company_id,
                 pre_diagnosis=json.dumps(process.pre_diagnosis, ensure_ascii=False),
-                iso_standard=process.iso_standard.value,
+                iso_standard=process.iso_standard.value if process.iso_standard else None,
+                perfilamiento_module=(
+                    process.perfilamiento_module.value if process.perfilamiento_module else None
+                ),
+                needs_certification=process.needs_certification,
+                perfilamiento_answers=json.dumps(process.perfilamiento_answers, ensure_ascii=False),
+                analysis_result=json.dumps(process.analysis_result, ensure_ascii=False),
                 status=process.status.value,
                 created_at=process.created_at.isoformat(),
                 updated_at=process.updated_at.isoformat(),
@@ -261,6 +271,23 @@ class ProcessRepository:
             rows = (await session.execute(stmt)).all()
             return [(self._process_to_domain(r[0]), r[1]) for r in rows]
 
+    async def list_active_by_company(
+        self, company_id: uuid.UUID, consultant_id: uuid.UUID
+    ) -> list[Process]:
+        """Active (non-completed) processes for a company, scoped to the consultant.
+
+        Powers `GET /processes/check-duplicate` (dedup by requirement/certification).
+        Scoped by `consultant_id` so it never leaks another auditor's process data.
+        """
+        async with AsyncSession(self._engine) as session:
+            stmt = select(ProcessTable).where(
+                ProcessTable.company_id == company_id,
+                ProcessTable.consultant_id == consultant_id,
+                ProcessTable.status != ProcessStatus.COMPLETED.value,
+            )
+            rows = (await session.execute(stmt)).scalars().all()
+            return [self._process_to_domain(r) for r in rows]
+
     async def update_process_status(self, process_id: uuid.UUID, status: ProcessStatus) -> None:
         from datetime import datetime, timezone
         async with AsyncSession(self._engine) as session:
@@ -287,6 +314,112 @@ class ProcessRepository:
                 row.status = ProcessStatus.IN_PROGRESS.value
             row.updated_at = datetime.now(timezone.utc).isoformat()
             await session.commit()
+
+    async def update_perfilamiento(
+        self, process_id: uuid.UUID, answers: dict, pain_points: str
+    ) -> Process:
+        """Atomically persist perfilamiento answers and advance the lifecycle.
+
+        ACID: a single conditional UPDATE computes the new status from the row's
+        *current* status (SQL ``CASE``) inside the same statement/row lock, rather
+        than read → decide in Python → write (which races a concurrent
+        ``/complete`` or ``/analysis`` and can clobber a newer state). The answers
+        write is unconditional (perfilamiento stays editable after completion);
+        only the transition is guarded: ``profiling_pending → in_diagnosis``,
+        never a downgrade of any later state.
+        """
+        from datetime import datetime, timezone
+
+        merged = dict(answers)
+        merged["pain_points"] = pain_points
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with AsyncSession(self._engine) as session:
+            result = await session.execute(
+                update(ProcessTable)
+                .where(ProcessTable.id == process_id)
+                .values(
+                    perfilamiento_answers=json.dumps(merged, ensure_ascii=False),
+                    status=case(
+                        (
+                            ProcessTable.status
+                            == ProcessStatus.PROFILING_PENDING.value,
+                            ProcessStatus.IN_DIAGNOSIS.value,
+                        ),
+                        else_=ProcessTable.status,
+                    ),
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+            if result.rowcount == 0:
+                raise ProcessNotFoundError("Process not found")
+            row = await session.get(ProcessTable, process_id)
+            if row is None:
+                raise ProcessNotFoundError("Process not found")
+            return self._process_to_domain(row)
+
+    async def update_analysis(self, process_id: uuid.UUID, analysis_result: dict) -> Process:
+        """Atomically persist the analysis and advance to ``plan_ready``.
+
+        ACID: a single conditional UPDATE makes the transition decision against
+        the row's current status under the write lock (no TOCTOU). Allowed source
+        states are the post-perfilamiento ones — ``in_diagnosis``, ``in_progress``,
+        ``plan_ready`` — so the process can never skip straight from
+        ``profiling_pending`` (no perfilamiento submitted) and can never downgrade
+        the terminal ``completed`` state. ``in_progress → plan_ready`` is a valid
+        forward transition (analysis confirmed after pre-diagnosis).
+        """
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).isoformat()
+
+        async with AsyncSession(self._engine) as session:
+            result = await session.execute(
+                update(ProcessTable)
+                .where(ProcessTable.id == process_id)
+                .values(
+                    analysis_result=json.dumps(analysis_result, ensure_ascii=False),
+                    status=case(
+                        (
+                            ProcessTable.status.in_(
+                                [
+                                    ProcessStatus.IN_DIAGNOSIS.value,
+                                    ProcessStatus.IN_PROGRESS.value,
+                                    ProcessStatus.PLAN_READY.value,
+                                ]
+                            ),
+                            ProcessStatus.PLAN_READY.value,
+                        ),
+                        else_=ProcessTable.status,
+                    ),
+                    updated_at=now,
+                )
+            )
+            await session.commit()
+            if result.rowcount == 0:
+                raise ProcessNotFoundError("Process not found")
+            row = await session.get(ProcessTable, process_id)
+            if row is None:
+                raise ProcessNotFoundError("Process not found")
+            return self._process_to_domain(row)
+
+    async def update_needs_certification(self, process_id: uuid.UUID, value: bool) -> Process:
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc).isoformat()
+        async with AsyncSession(self._engine) as session:
+            result = await session.execute(
+                update(ProcessTable)
+                .where(ProcessTable.id == process_id)
+                .values(needs_certification=value, updated_at=now)
+            )
+            await session.commit()
+            if result.rowcount == 0:
+                raise ProcessNotFoundError("Process not found")
+            row = await session.get(ProcessTable, process_id)
+            if row is None:
+                raise ProcessNotFoundError("Process not found")
+            return self._process_to_domain(row)
 
     # ---- Findings ---------------------------------------------------------
 
@@ -896,12 +1029,26 @@ class ProcessRepository:
             pre_diagnosis = json.loads(row.pre_diagnosis) if row.pre_diagnosis else {}
         except json.JSONDecodeError:
             pre_diagnosis = {}
+        try:
+            perfilamiento_answers = json.loads(row.perfilamiento_answers) if row.perfilamiento_answers else {}
+        except json.JSONDecodeError:
+            perfilamiento_answers = {}
+        try:
+            analysis_result = json.loads(row.analysis_result) if row.analysis_result else {}
+        except json.JSONDecodeError:
+            analysis_result = {}
         return Process(
             id=row.id,
             consultant_id=row.consultant_id,
             company_id=row.company_id,
             pre_diagnosis=pre_diagnosis,
-            iso_standard=IsoStandard(row.iso_standard),
+            iso_standard=IsoStandard(row.iso_standard) if row.iso_standard else None,
+            perfilamiento_module=(
+                PerfilamientoModule(row.perfilamiento_module) if row.perfilamiento_module else None
+            ),
+            needs_certification=row.needs_certification,
+            perfilamiento_answers=perfilamiento_answers,
+            analysis_result=analysis_result,
             status=ProcessStatus(row.status),
             created_at=datetime.fromisoformat(row.created_at),
             updated_at=datetime.fromisoformat(row.updated_at),

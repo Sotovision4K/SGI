@@ -47,27 +47,30 @@ def mock_current_user():
 def client(mock_settings, mock_current_user):
     """FastAPI test client with mocked settings + auth."""
 
-    # Patch settings BEFORE app is imported
-    with patch("src.config.settings.get_settings", return_value=mock_settings):
-        from src.main import app
-        from src.routes.user.auth import get_current_user as real_get_current_user
+    from src.main import app
+    from src.routes.user.auth import get_current_user as real_get_current_user
+    from src.config.settings import get_settings as real_get_settings
 
-        # Override the get_current_user dependency to skip token verification
-        app.dependency_overrides[real_get_current_user] = lambda: mock_current_user
+    # Override the get_current_user dependency to skip token verification, and
+    # get_settings so routes resolve a real Settings value instead of the MagicMock
+    # (patch() replaces it with a MagicMock whose `(*args, **kwargs)` signature
+    # breaks FastAPI's Depends resolution — "query args/kwargs" 422).
+    app.dependency_overrides[real_get_current_user] = lambda: mock_current_user
+    app.dependency_overrides[real_get_settings] = lambda: mock_settings
 
-        # Skip lifespan (DB connection)
-        from contextlib import asynccontextmanager
+    # Skip lifespan (DB connection)
+    from contextlib import asynccontextmanager
 
-        @asynccontextmanager
-        async def noop_lifespan(app):
-            yield
+    @asynccontextmanager
+    async def noop_lifespan(app):
+        yield
 
-        app.router.lifespan_context = noop_lifespan
+    app.router.lifespan_context = noop_lifespan
 
-        with TestClient(app) as c:
-            yield c
+    with TestClient(app) as c:
+        yield c
 
-        app.dependency_overrides.clear()
+    app.dependency_overrides.clear()
 
 
 # ---- Health ----------------------------------------------------------------
@@ -97,19 +100,24 @@ class TestCompaniesRoutes:
         mock_repo = MagicMock()
         mock_repo.list_companies = AsyncMock(return_value=items)
 
-        with patch(
-            "src.routes.companies.routes.get_company_repository",
-            return_value=lambda: mock_repo,
-        ):
-            r = client.get("/companies")
+        from src.main import app as fastapi_app
+        from src.routes.companies.routes import get_company_repository, get_process_repository as get_proc_repo
 
-        # If dependency override didn't kick in, the auth dep would fire first
-        # and return 401. We expect 200 here.
-        if r.status_code == 200:
-            body = r.json()
-            assert "items" in body
-            assert "total" in body
-            assert body["total"] == len(items)
+        proc_repo = MagicMock()
+        proc_repo.list_processes = AsyncMock(return_value=[])
+        old_comp = _override_repo(fastapi_app, get_company_repository, mock_repo)
+        old_proc = _override_repo(fastapi_app, get_proc_repo, proc_repo)
+        try:
+            r = client.get("/companies")
+        finally:
+            _restore_repo(fastapi_app, get_company_repository, old_comp)
+            _restore_repo(fastapi_app, get_proc_repo, old_proc)
+
+        assert r.status_code == 200
+        body = r.json()
+        assert "items" in body
+        assert "total" in body
+        assert body["total"] == len(items)
 
     def test_create_company_requires_name(self, client):
         r = client.post("/companies", json={"name": ""})
@@ -212,27 +220,41 @@ class TestProcessesRoutes:
         mock_repo = MagicMock()
         mock_repo.list_processes_with_company = AsyncMock(return_value=[])
 
-        with patch(
-            "src.routes.processes.routes.get_process_repository",
-            return_value=lambda: mock_repo,
-        ):
-            r = client.get("/processes")
-        if r.status_code == 200:
-            body = r.json()
-            assert "items" in body
-            assert "total" in body
+        from src.main import app as fastapi_app
+        from src.routes.processes.routes import get_process_repository
 
-    def test_create_process_requires_valid_iso(self, client):
+        old = _override_repo(fastapi_app, get_process_repository, mock_repo)
+        try:
+            r = client.get("/processes")
+        finally:
+            _restore_repo(fastapi_app, get_process_repository, old)
+        assert r.status_code == 200
+        body = r.json()
+        assert "items" in body
+        assert "total" in body
+
+    def test_create_process_requires_valid_module(self, client):
         r = client.post(
             "/processes",
-            json={"company_id": str(uuid.uuid4()), "iso_standard": "iso27001"},
+            json={"company_id": str(uuid.uuid4()), "perfilamiento_module": "iso27001"},
         )
         assert r.status_code == 422
 
     def test_create_process_requires_company_id_uuid(self, client):
         r = client.post(
             "/processes",
-            json={"company_id": "not-a-uuid", "iso_standard": "iso9001"},
+            json={"company_id": "not-a-uuid", "perfilamiento_module": "sst"},
+        )
+        assert r.status_code == 422
+
+    def test_create_process_rejects_extra_fields(self, client):
+        r = client.post(
+            "/processes",
+            json={
+                "company_id": str(uuid.uuid4()),
+                "perfilamiento_module": "sst",
+                "unexpected": "nope",
+            },
         )
         assert r.status_code == 422
 
@@ -242,31 +264,269 @@ class TestProcessesRoutes:
         created_process.id = new_id
         created_process.consultant_id = uuid.UUID(mock_current_user["sub"])
         created_process.company_id = uuid.uuid4()
-        created_process.iso_standard.value = "iso9001"
-        created_process.status.value = "in_diagnosis"
+        created_process.iso_standard = None
+        created_process.perfilamiento_module = MagicMock()
+        created_process.perfilamiento_module.value = "optimizacion"
+        created_process.needs_certification = False
+        created_process.status = MagicMock()
+        created_process.status.value = "profiling_pending"
+        created_process.pre_diagnosis = {}
+        created_process.perfilamiento_answers = {}
+        created_process.analysis_result = {}
         created_process.created_at = datetime.now(timezone.utc)
         created_process.updated_at = datetime.now(timezone.utc)
 
         mock_repo = MagicMock()
         mock_repo.create_process = AsyncMock(return_value=created_process)
-        mock_company_repo = MagicMock()
-        mock_company_repo.get_company = AsyncMock(return_value=None)
 
-        with patch(
-            "src.routes.processes.routes.get_process_repository",
-            return_value=lambda: mock_repo,
-        ), patch(
-            "src.routes.processes.routes._hydrate_company_name",
-            AsyncMock(return_value=None),
-        ):
+        company = {
+            "user_id": mock_current_user["sub"],
+            "contact_email": "x@example.com",
+            "name": "Acme",
+        }
+        app, deps = self._override_process_deps(mock_repo, company=company)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value=None),
+            ):
+                r = client.post(
+                    "/processes",
+                    json={
+                        "company_id": str(uuid.uuid4()),
+                        "perfilamiento_module": "optimizacion",
+                    },
+                )
+        finally:
+            self._restore_process_deps(app, deps)
+
+        assert r.status_code in (200, 201)
+        call = mock_repo.create_process.call_args.args[0]
+        assert str(call.consultant_id) == mock_current_user["sub"]
+
+    def _override_process_deps(self, mock_repo, company=None):
+        """Override process/company repo + settings + email deps (Depends is not patchable).
+
+        ``company`` is the dict returned by ``CompanyRepository.get_company``
+        (used by create_process's ownership check); ``None`` simulates a missing
+        company.
+        """
+        from src.main import app as fastapi_app
+        from src.routes.processes.routes import get_process_repository, get_company_repository
+        from src.config.settings import get_settings
+        from src.adapters.email.ses_adapter import get_email_adapter
+
+        mock_company_repo = MagicMock()
+        mock_company_repo.get_company = AsyncMock(return_value=company)
+        mock_email = MagicMock()
+        mock_email.send_welcome_email = AsyncMock()
+        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
+        fastapi_app.dependency_overrides[get_company_repository] = lambda: mock_company_repo
+        fastapi_app.dependency_overrides[get_settings] = lambda: MagicMock()
+        fastapi_app.dependency_overrides[get_email_adapter] = lambda: mock_email
+        return fastapi_app, (get_process_repository, get_company_repository, get_settings, get_email_adapter)
+
+    def _restore_process_deps(self, fastapi_app, deps):
+        for dep in deps:
+            fastapi_app.dependency_overrides.pop(dep, None)
+
+    def test_create_process_with_module_does_not_derive_iso(self, client, mock_current_user):
+        """POST with perfilamiento_module leaves iso_standard None (certification deferred)."""
+        from src.domain.entities.process import PerfilamientoModule, ProcessStatus
+
+        mock_repo = MagicMock()
+        mock_repo.create_process = AsyncMock(side_effect=lambda p: p)
+        company = {
+            "user_id": mock_current_user["sub"],
+            "contact_email": "x@example.com",
+            "name": "Acme",
+        }
+        app, deps = self._override_process_deps(mock_repo, company=company)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value=None),
+            ):
+                r = client.post(
+                    "/processes",
+                    json={"company_id": str(uuid.uuid4()), "perfilamiento_module": "sst"},
+                )
+        finally:
+            self._restore_process_deps(app, deps)
+
+        assert r.status_code == 201
+        call = mock_repo.create_process.call_args.args[0]
+        assert call.perfilamiento_module == PerfilamientoModule.SST
+        assert call.iso_standard is None
+        assert call.status == ProcessStatus.PROFILING_PENDING
+        assert r.json()["perfilamiento_module"] == "sst"
+        assert r.json()["iso_standard"] is None
+        assert r.json()["needs_certification"] is False
+
+    def test_create_process_with_module_and_needs_certification_round_trips(
+        self, client, mock_current_user
+    ):
+        """POST with needs_certification=true round-trips the flag; iso stays None."""
+        from src.domain.entities.process import PerfilamientoModule, ProcessStatus
+
+        mock_repo = MagicMock()
+        mock_repo.create_process = AsyncMock(side_effect=lambda p: p)
+        company = {
+            "user_id": mock_current_user["sub"],
+            "contact_email": "x@example.com",
+            "name": "Acme",
+        }
+        app, deps = self._override_process_deps(mock_repo, company=company)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value=None),
+            ):
+                r = client.post(
+                    "/processes",
+                    json={
+                        "company_id": str(uuid.uuid4()),
+                        "perfilamiento_module": "sst",
+                        "needs_certification": True,
+                    },
+                )
+        finally:
+            self._restore_process_deps(app, deps)
+
+        assert r.status_code == 201
+        call = mock_repo.create_process.call_args.args[0]
+        assert call.perfilamiento_module == PerfilamientoModule.SST
+        assert call.iso_standard is None
+        assert call.needs_certification is True
+        assert call.status == ProcessStatus.PROFILING_PENDING
+        assert r.json()["iso_standard"] is None
+        assert r.json()["needs_certification"] is True
+
+    def test_create_process_nts_module_has_null_iso(self, client, mock_current_user):
+        """nts maps to no single ISO → iso_standard stays None."""
+        from src.domain.entities.process import PerfilamientoModule, ProcessStatus
+
+        mock_repo = MagicMock()
+        mock_repo.create_process = AsyncMock(side_effect=lambda p: p)
+        company = {
+            "user_id": mock_current_user["sub"],
+            "contact_email": "x@example.com",
+            "name": "Acme",
+        }
+        app, deps = self._override_process_deps(mock_repo, company=company)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value=None),
+            ):
+                r = client.post(
+                    "/processes",
+                    json={"company_id": str(uuid.uuid4()), "perfilamiento_module": "nts"},
+                )
+        finally:
+            self._restore_process_deps(app, deps)
+
+        assert r.status_code == 201
+        call = mock_repo.create_process.call_args.args[0]
+        assert call.perfilamiento_module == PerfilamientoModule.NTS
+        assert call.iso_standard is None
+        assert call.status == ProcessStatus.PROFILING_PENDING
+        assert r.json()["iso_standard"] is None
+
+    def test_create_process_missing_company_returns_404(self, client):
+        """Creating a process for a company that does not exist → 404."""
+        mock_repo = MagicMock()
+        mock_repo.create_process = AsyncMock(side_effect=lambda p: p)
+        app, deps = self._override_process_deps(mock_repo, company=None)
+        try:
             r = client.post(
                 "/processes",
-                json={"company_id": str(uuid.uuid4()), "iso_standard": "iso9001"},
+                json={"company_id": str(uuid.uuid4()), "perfilamiento_module": "sst"},
             )
+        finally:
+            self._restore_process_deps(app, deps)
 
-        if r.status_code in (200, 201):
-            call = mock_repo.create_process.call_args.args[0]
-            assert str(call.consultant_id) == mock_current_user["sub"]
+        assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text[:200]}"
+        mock_repo.create_process.assert_not_awaited()
+
+    def test_create_process_foreign_company_returns_403(self, client, mock_current_user):
+        """A company owned by another auditor must be rejected (403) and create no row."""
+        mock_repo = MagicMock()
+        mock_repo.create_process = AsyncMock(side_effect=lambda p: p)
+        foreign_company = {
+            "user_id": str(uuid.uuid4()),  # a different auditor
+            "contact_email": "other@example.com",
+            "name": "Foreign Corp",
+        }
+        assert foreign_company["user_id"] != mock_current_user["sub"]
+        app, deps = self._override_process_deps(mock_repo, company=foreign_company)
+        try:
+            r = client.post(
+                "/processes",
+                json={"company_id": str(uuid.uuid4()), "perfilamiento_module": "sst"},
+            )
+        finally:
+            self._restore_process_deps(app, deps)
+
+        assert r.status_code == 403, f"expected 403, got {r.status_code}: {r.text[:200]}"
+        mock_repo.create_process.assert_not_awaited()
+
+    def test_create_process_requires_module(self, client):
+        mock_repo = MagicMock()
+        mock_repo.create_process = AsyncMock(side_effect=lambda p: p)
+        app, deps = self._override_process_deps(mock_repo)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value=None),
+            ):
+                r = client.post("/processes", json={"company_id": str(uuid.uuid4())})
+        finally:
+            self._restore_process_deps(app, deps)
+        assert r.status_code == 422
+
+    def test_check_duplicate_returns_taken_modules_and_empty_iso(self, client):
+        """check-duplicate aggregates active processes into module + ISO sets.
+
+        Under the new flow no ISO is assigned at creation, so taken_iso_standards
+        is empty even though taken_modules still reflects the chosen modules.
+        """
+        from src.domain.entities.process import (
+            PerfilamientoModule,
+            ProcessStatus,
+            Process,
+        )
+
+        company_id = uuid.uuid4()
+        consultant_id = uuid.uuid4()
+
+        p1 = Process(
+            consultant_id=consultant_id,
+            company_id=company_id,
+            perfilamiento_module=PerfilamientoModule.SST,
+            iso_standard=None,
+            status=ProcessStatus.PROFILING_PENDING,
+        )
+        p2 = Process(
+            consultant_id=consultant_id,
+            company_id=company_id,
+            perfilamiento_module=PerfilamientoModule.PLANIFICACION,
+            iso_standard=None,
+            status=ProcessStatus.IN_DIAGNOSIS,
+        )
+
+        mock_repo = MagicMock()
+        mock_repo.list_active_by_company = AsyncMock(return_value=[p1, p2])
+        app, deps = self._override_process_deps(mock_repo)
+        try:
+            r = client.get(f"/processes/check-duplicate?company_id={company_id}")
+        finally:
+            self._restore_process_deps(app, deps)
+
+        assert r.status_code == 200
+        body = r.json()
+        assert set(body["taken_modules"]) == {"sst", "planificacion"}
+        assert body["taken_iso_standards"] == []
 
     def test_pre_diagnosis_round_trip(self, client, mock_current_user):
         """PUT pre-diagnosis -> GET process includes the saved dict."""
@@ -351,38 +611,42 @@ class TestProcessesRoutes:
 
 
 class TestFindingsRoutes:
-    def test_get_findings_when_none_returns_empty(self, client):
+    def test_get_findings_when_none_returns_empty(self, client, mock_current_user):
+        process = _make_process_for_owner(mock_current_user["sub"])
         mock_repo = MagicMock()
-        mock_repo.get_process = AsyncMock(return_value=None)
+        mock_repo.get_process = AsyncMock(return_value=process)
         mock_repo.get_finding = AsyncMock(return_value=None)
 
-        with patch(
-            "src.routes.processes.routes.get_process_repository",
-            return_value=lambda: mock_repo,
-        ):
-            r = client.get(f"/processes/{uuid.uuid4()}/findings")
-        if r.status_code == 200:
-            body = r.json()
-            assert body["answers"] == {}
-            assert body["free_text"] == ""
+        from src.main import app as fastapi_app
+        from src.routes.processes.routes import get_process_repository
+
+        old = _override_repo(fastapi_app, get_process_repository, mock_repo)
+        try:
+            r = client.get(f"/processes/{process.id}/findings")
+        finally:
+            _restore_repo(fastapi_app, get_process_repository, old)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["answers"] == {}
+        assert body["free_text"] == ""
 
     def test_upsert_findings_requires_process_exists(self, client):
         mock_repo = MagicMock()
         mock_repo.get_process = AsyncMock(return_value=None)
 
-        with patch(
-            "src.routes.processes.routes.get_process_repository",
-            return_value=lambda: mock_repo,
-        ):
+        from src.main import app as fastapi_app
+        from src.routes.processes.routes import get_process_repository
+
+        old = _override_repo(fastapi_app, get_process_repository, mock_repo)
+        try:
             r = client.put(
                 f"/processes/{uuid.uuid4()}/findings",
                 json={"answers": {"q1": "x"}, "free_text": ""},
             )
+        finally:
+            _restore_repo(fastapi_app, get_process_repository, old)
         # 404 because process doesn't exist; repo mock returns None
-        if r.status_code not in (404, 422):
-            pytest.fail(f"Expected 404 or 422, got {r.status_code}: {r.text}")
-        # 422 is acceptable if the patch path is wrong (validation layer fires first)
-        assert r.status_code in (404, 422)
+        assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
 
     def _owned_process(self, mock_current_user):
         from src.domain.entities.process import Process, IsoStandard, ProcessStatus
@@ -550,6 +814,36 @@ class TestGeneratePlanRoute:
             r = client.post(f"/processes/{process.id}/generate-plan")
 
         assert r.status_code == 400, f"got {r.status_code}: {r.text[:300]}"
+
+    def test_generate_plan_without_iso_returns_409_and_does_not_enqueue(
+        self, client, mock_current_user
+    ):
+        from src.domain.entities.process import Process, ProcessStatus
+        from src.domain.entities.finding import Finding
+
+        process = Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.UUID(mock_current_user["sub"]),
+            company_id=uuid.uuid4(),
+            iso_standard=None,
+            status=ProcessStatus.IN_DIAGNOSIS,
+        )
+        finding = Finding(process_id=process.id, answers={"q1": "yes"})
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_finding = AsyncMock(return_value=finding)
+        mock_repo.create_plan_job = AsyncMock()
+
+        queue = self._fake_queue()
+
+        with self._override_deps(self._app(), mock_repo, queue):
+            r = client.post(f"/processes/{process.id}/generate-plan")
+
+        assert r.status_code == 409, f"got {r.status_code}: {r.text[:300]}"
+        mock_repo.create_plan_job.assert_not_awaited()
+        queue.enqueue_plan_generation.assert_not_awaited()
+        mock_repo.get_finding.assert_not_awaited()
 
     def test_generate_plan_requires_process_exists(self, client):
         mock_repo = MagicMock()
@@ -816,6 +1110,20 @@ def _restore_auth(app, old):
         app.dependency_overrides.pop(target, None)
 
 
+def _override_repo(app, target, mock_repo):
+    """Temporarily override a repository dependency (patch() is ineffective for Depends)."""
+    old = app.dependency_overrides.get(target)
+    app.dependency_overrides[target] = lambda: mock_repo
+    return old
+
+
+def _restore_repo(app, target, old):
+    if old is not None:
+        app.dependency_overrides[target] = old
+    else:
+        app.dependency_overrides.pop(target, None)
+
+
 def _make_process_for_owner(owner_sub: str):
     from src.domain.entities.process import Process, IsoStandard, ProcessStatus
     return Process(
@@ -905,17 +1213,17 @@ class TestIdorProcesses:
         mock_repo.get_finding = AsyncMock(return_value=None)
         mock_repo.upsert_finding = AsyncMock()
 
+        from src.routes.processes.routes import get_process_repository
+
         old_auth = _override_auth(fastapi_app, attacker_user)
+        old_repo = _override_repo(fastapi_app, get_process_repository, mock_repo)
         try:
-            with patch(
-                "src.routes.processes.routes.get_process_repository",
-                return_value=lambda: mock_repo,
-            ):
-                r = client.put(
-                    f"/processes/{process.id}/findings",
-                    json={"answers": {"q": "x"}, "free_text": "malicious"},
-                )
+            r = client.put(
+                f"/processes/{process.id}/findings",
+                json={"answers": {"q": "x"}, "free_text": "malicious"},
+            )
         finally:
+            _restore_repo(fastapi_app, get_process_repository, old_repo)
             _restore_auth(fastapi_app, old_auth)
         assert r.status_code in (403, 404, 422), \
             f"Attacker should NOT modify foreign findings, got {r.status_code}: {r.text[:200]}"
@@ -1068,3 +1376,742 @@ class TestIdorCompanies:
             else:
                 fastapi_app.dependency_overrides.pop(get_company_repository, None)
         assert r.status_code == 200, f"Owner should access own company, got {r.status_code}: {r.text[:200]}"
+
+
+# ---- Profiling analysis ----------------------------------------------------
+
+
+class TestProfilingRoutes:
+    def test_analyze_returns_parsed_result(self, client, mock_current_user):
+        """POST /profiling/analyze returns the parsed LLM analysis."""
+        from src.main import app as fastapi_app
+        from src.routes.profiling.routes import get_process_repository, get_profiling_llm
+        from src.domain.entities.process import (
+            Process,
+            IsoStandard,
+            PerfilamientoModule,
+            ProcessStatus,
+        )
+        from src.adapters.llm.llm_port import StructuredResult
+
+        process = Process(
+            consultant_id=uuid.UUID(mock_current_user["sub"]),
+            company_id=uuid.uuid4(),
+            perfilamiento_module=PerfilamientoModule.SST,
+            iso_standard=IsoStandard.ISO_45001,
+            status=ProcessStatus.PROFILING_PENDING,
+            perfilamiento_answers={"sst_01": "Cumplir", "pain_points": "Sin indicadores"},
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_company_name = AsyncMock(return_value="Acme")
+
+        mock_llm = MagicMock()
+        mock_llm.generate_structured = AsyncMock(
+            return_value=StructuredResult(
+                data={
+                    "pain_points_analysis": "## Crítico",
+                    "cost_estimation": {
+                        "range_cop": "30M",
+                        "breakdown": ["Consultoría"],
+                        "confidence": "high",
+                    },
+                    "time_estimation": {
+                        "months": 6,
+                        "phases": ["Fase 1"],
+                        "confidence": "medium",
+                    },
+                    "action_plan": {
+                        "phases": [
+                            {"name": "Diagnóstico", "duration_weeks": 4, "activities": ["x"]}
+                        ],
+                        "milestones": ["Hito"],
+                    },
+                }
+            )
+        )
+
+        old_repo = _override_repo(fastapi_app, get_process_repository, mock_repo)
+        old_llm = fastapi_app.dependency_overrides.get(get_profiling_llm)
+        fastapi_app.dependency_overrides[get_profiling_llm] = lambda: mock_llm
+        try:
+            r = client.post("/profiling/analyze", json={"process_id": str(process.id)})
+        finally:
+            _restore_repo(fastapi_app, get_process_repository, old_repo)
+            if old_llm is not None:
+                fastapi_app.dependency_overrides[get_profiling_llm] = old_llm
+            else:
+                fastapi_app.dependency_overrides.pop(get_profiling_llm, None)
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["cost_estimation"]["range_cop"] == "30M"
+        assert body["time_estimation"]["months"] == 6
+        assert body["action_plan"]["phases"][0]["name"] == "Diagnóstico"
+        # The LLM received the whole context in ONE call.
+        mock_llm.generate_structured.assert_awaited_once()
+
+    def test_analyze_404_for_foreign_process(self, client, mock_current_user):
+        """A process owned by another consultant → 404 (no leak)."""
+        from src.main import app as fastapi_app
+        from src.routes.profiling.routes import get_process_repository
+        from src.domain.entities.process import (
+            Process,
+            IsoStandard,
+            PerfilamientoModule,
+            ProcessStatus,
+        )
+
+        foreign = Process(
+            consultant_id=uuid.uuid4(),  # not the current user
+            company_id=uuid.uuid4(),
+            perfilamiento_module=PerfilamientoModule.SST,
+            iso_standard=IsoStandard.ISO_45001,
+            status=ProcessStatus.PROFILING_PENDING,
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=foreign)
+
+        old_repo = _override_repo(fastapi_app, get_process_repository, mock_repo)
+        try:
+            r = client.post("/profiling/analyze", json={"process_id": str(foreign.id)})
+        finally:
+            _restore_repo(fastapi_app, get_process_repository, old_repo)
+
+        assert r.status_code == 404
+
+    def test_analyze_maps_terminal_error_to_502(self, client, mock_current_user):
+        """A TerminalError from the LLM path → 502 (unusable output)."""
+        from src.main import app as fastapi_app
+        from src.routes.profiling.routes import get_process_repository, get_profiling_llm
+        from src.domain.entities.process import (
+            Process,
+            IsoStandard,
+            PerfilamientoModule,
+            ProcessStatus,
+        )
+        from src.errors import InvalidResponseError
+
+        process = Process(
+            consultant_id=uuid.UUID(mock_current_user["sub"]),
+            company_id=uuid.uuid4(),
+            perfilamiento_module=PerfilamientoModule.SST,
+            iso_standard=IsoStandard.ISO_45001,
+            status=ProcessStatus.PROFILING_PENDING,
+            perfilamiento_answers={"sst_01": "Cumplir"},
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.get_company_name = AsyncMock(return_value="Acme")
+
+        mock_llm = MagicMock()
+        mock_llm.generate_structured = AsyncMock(side_effect=InvalidResponseError("bad"))
+
+        old_repo = _override_repo(fastapi_app, get_process_repository, mock_repo)
+        old_llm = fastapi_app.dependency_overrides.get(get_profiling_llm)
+        fastapi_app.dependency_overrides[get_profiling_llm] = lambda: mock_llm
+        try:
+            r = client.post("/profiling/analyze", json={"process_id": str(process.id)})
+        finally:
+            _restore_repo(fastapi_app, get_process_repository, old_repo)
+            if old_llm is not None:
+                fastapi_app.dependency_overrides[get_profiling_llm] = old_llm
+            else:
+                fastapi_app.dependency_overrides.pop(get_profiling_llm, None)
+
+        assert r.status_code == 502
+
+
+class TestPerfilamientoAndAnalysisRoutes:
+    """PUT /perfilamiento and PUT /analysis persistence endpoints (Phase 3)."""
+
+    @staticmethod
+    def _app():
+        from src.main import app
+        return app
+
+    def _owned_process(self, mock_current_user, status=None):
+        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
+
+        if status is None:
+            status = ProcessStatus.PROFILING_PENDING
+        return Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.UUID(mock_current_user["sub"]),
+            company_id=uuid.uuid4(),
+            iso_standard=IsoStandard.ISO_9001,
+            status=status,
+        )
+
+    @staticmethod
+    def _valid_analysis() -> dict:
+        """A payload that satisfies the strict AnalysisUpdateRequest schema."""
+        return {
+            "pain_points_analysis": "## Crítico",
+            "cost_estimation": {
+                "range_cop": "30M",
+                "breakdown": ["Consultoría"],
+                "confidence": "high",
+            },
+            "time_estimation": {
+                "months": 6,
+                "phases": ["Fase 1"],
+                "confidence": "medium",
+            },
+            "action_plan": {
+                "phases": [
+                    {"name": "Diagnóstico", "duration_weeks": 4, "activities": ["x"]}
+                ],
+                "milestones": ["Hito"],
+            },
+        }
+
+    def _override_repo(self, fastapi_app, mock_repo):
+        from src.routes.processes.routes import get_process_repository
+
+        old = fastapi_app.dependency_overrides.get(get_process_repository)
+        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
+        return get_process_repository, old
+
+    def _restore_repo(self, fastapi_app, dep, old):
+        if old is not None:
+            fastapi_app.dependency_overrides[dep] = old
+        else:
+            fastapi_app.dependency_overrides.pop(dep, None)
+
+    # ---- PUT /perfilamiento -------------------------------------------------
+
+    def test_put_perfilamiento_persists_answers_and_pain_points(self, client, mock_current_user):
+        from src.domain.entities.process import ProcessStatus
+
+        process = self._owned_process(mock_current_user)
+        answers = {"opt_01": "Sí"}
+        pain_points = "Sin indicadores"
+
+        updated = process.model_copy(
+            update={
+                "perfilamiento_answers": {**answers, "pain_points": pain_points},
+                "status": ProcessStatus.IN_DIAGNOSIS,
+            }
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_perfilamiento = AsyncMock(return_value=updated)
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value="Test Corp"),
+            ):
+                r = client.put(
+                    f"/processes/{process.id}/perfilamiento",
+                    json={"answers": answers, "pain_points": pain_points},
+                )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["perfilamiento_answers"]["pain_points"] == pain_points
+        assert body["status"] == "in_diagnosis"
+        mock_repo.update_perfilamiento.assert_awaited_once_with(
+            process.id, answers, pain_points
+        )
+        assert mock_repo.get_process.await_count == 1
+
+    def test_put_perfilamiento_rejects_invalid_answer_key(self, client, mock_current_user):
+        process = self._owned_process(mock_current_user)
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_perfilamiento = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/perfilamiento",
+                json={"answers": {"1BAD": "x"}},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_perfilamiento.assert_not_awaited()
+
+    def test_put_perfilamiento_foreign_process_blocked(self, client, mock_current_user):
+        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
+
+        foreign = Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.uuid4(),  # not the current user
+            company_id=uuid.uuid4(),
+            iso_standard=IsoStandard.ISO_9001,
+            status=ProcessStatus.PROFILING_PENDING,
+        )
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=foreign)
+        mock_repo.update_perfilamiento = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{foreign.id}/perfilamiento",
+                json={"answers": {"opt_01": "Sí"}, "pain_points": ""},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_perfilamiento.assert_not_awaited()
+
+    # ---- PUT /analysis ------------------------------------------------------
+
+    def test_put_analysis_persists_valid_result(self, client, mock_current_user):
+        from src.domain.entities.process import ProcessStatus
+
+        process = self._owned_process(mock_current_user)
+        analysis = {
+            "pain_points_analysis": "## Crítico",
+            "cost_estimation": {
+                "range_cop": "30M",
+                "breakdown": ["Consultoría"],
+                "confidence": "high",
+            },
+            "time_estimation": {
+                "months": 6,
+                "phases": ["Fase 1"],
+                "confidence": "medium",
+            },
+            "action_plan": {
+                "phases": [
+                    {"name": "Diagnóstico", "duration_weeks": 4, "activities": ["x"]}
+                ],
+                "milestones": ["Hito"],
+            },
+        }
+
+        updated = process.model_copy(
+            update={"analysis_result": analysis, "status": ProcessStatus.PLAN_READY}
+        )
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock(return_value=updated)
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value="Test Corp"),
+            ):
+                r = client.put(
+                    f"/processes/{process.id}/analysis",
+                    json={"analysis_result": analysis},
+                )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["status"] == "plan_ready"
+        assert body["analysis_result"]["cost_estimation"]["range_cop"] == "30M"
+        mock_repo.update_analysis.assert_awaited_once()
+        assert mock_repo.get_process.await_count == 1
+
+    def test_put_analysis_rejects_invalid_payload(self, client, mock_current_user):
+        process = self._owned_process(mock_current_user)
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": {"cost_estimation": {"confidence": "nope"}}},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_empty_payload(self, client, mock_current_user):
+        """Strict schema: an empty analysis_result must not advance the lifecycle."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": {}},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_unknown_keys(self, client, mock_current_user):
+        """Strict schema: extra keys are forbidden (extra='forbid')."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["unexpected"] = "nope"
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_empty_breakdown(self, client, mock_current_user):
+        """Strict schema: breakdown must be non-empty."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["cost_estimation"]["breakdown"] = []
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_empty_time_phases(self, client, mock_current_user):
+        """Strict schema: time_estimation.phases must be non-empty."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["time_estimation"]["phases"] = []
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_empty_action_plan_phases(self, client, mock_current_user):
+        """Strict schema: action_plan.phases must be non-empty."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["action_plan"]["phases"] = []
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_empty_milestones(self, client, mock_current_user):
+        """Strict schema: action_plan.milestones must be non-empty."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["action_plan"]["milestones"] = []
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_rejects_empty_phase_activities(self, client, mock_current_user):
+        """Strict schema: action_plan.phases[].activities must be non-empty."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["action_plan"]["phases"][0]["activities"] = []
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_foreign_process_blocked(self, client, mock_current_user):
+        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
+
+        foreign = Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.uuid4(),  # not the current user
+            company_id=uuid.uuid4(),
+            iso_standard=IsoStandard.ISO_9001,
+            status=ProcessStatus.IN_DIAGNOSIS,
+        )
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=foreign)
+        mock_repo.update_analysis = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{foreign.id}/analysis",
+                json={"analysis_result": self._valid_analysis()},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+
+class TestNeedsCertificationRoute:
+    """PUT /processes/{id}/needs-certification (Increment 2)."""
+
+    @staticmethod
+    def _app():
+        from src.main import app
+        return app
+
+    def _owned_process(self, mock_current_user):
+        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
+
+        return Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.UUID(mock_current_user["sub"]),
+            company_id=uuid.uuid4(),
+            iso_standard=IsoStandard.ISO_9001,
+            status=ProcessStatus.IN_DIAGNOSIS,
+        )
+
+    def _override_repo(self, fastapi_app, mock_repo):
+        from src.routes.processes.routes import get_process_repository
+
+        old = fastapi_app.dependency_overrides.get(get_process_repository)
+        fastapi_app.dependency_overrides[get_process_repository] = lambda: mock_repo
+        return get_process_repository, old
+
+    def _restore_repo(self, fastapi_app, dep, old):
+        if old is not None:
+            fastapi_app.dependency_overrides[dep] = old
+        else:
+            fastapi_app.dependency_overrides.pop(dep, None)
+
+    def test_put_needs_certification_true(self, client, mock_current_user):
+        process = self._owned_process(mock_current_user)
+        updated = process.model_copy(update={"needs_certification": True})
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_needs_certification = AsyncMock(return_value=updated)
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value="Test Corp"),
+            ):
+                r = client.put(
+                    f"/processes/{process.id}/needs-certification",
+                    json={"value": True},
+                )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["needs_certification"] is True
+        mock_repo.update_needs_certification.assert_awaited_once_with(process.id, True)
+        assert mock_repo.get_process.await_count == 1
+
+    def test_put_needs_certification_false(self, client, mock_current_user):
+        process = self._owned_process(mock_current_user)
+        updated = process.model_copy(update={"needs_certification": False})
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_needs_certification = AsyncMock(return_value=updated)
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value="Test Corp"),
+            ):
+                r = client.put(
+                    f"/processes/{process.id}/needs-certification",
+                    json={"value": False},
+                )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 200, r.text
+        assert r.json()["needs_certification"] is False
+        mock_repo.update_needs_certification.assert_awaited_once_with(process.id, False)
+
+    def test_put_needs_certification_invalid_body(self, client, mock_current_user):
+        process = self._owned_process(mock_current_user)
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_needs_certification = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/needs-certification",
+                json={"value": "nope"},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_needs_certification.assert_not_awaited()
+
+    def test_put_needs_certification_foreign_process_blocked(self, client, mock_current_user):
+        from src.domain.entities.process import Process, IsoStandard, ProcessStatus
+
+        foreign = Process(
+            id=uuid.uuid4(),
+            consultant_id=uuid.uuid4(),  # not the current user
+            company_id=uuid.uuid4(),
+            iso_standard=IsoStandard.ISO_9001,
+            status=ProcessStatus.IN_DIAGNOSIS,
+        )
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=foreign)
+        mock_repo.update_needs_certification = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{foreign.id}/needs-certification",
+                json={"value": True},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_needs_certification.assert_not_awaited()
+
+    def test_put_needs_certification_missing_returns_404(self, client, mock_current_user):
+        """A vanished process row raises ProcessNotFoundError → global handler maps it to 404."""
+        from src.errors import ProcessNotFoundError
+
+        process = self._owned_process(mock_current_user)
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_needs_certification = AsyncMock(
+            side_effect=ProcessNotFoundError("Process not found")
+        )
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/needs-certification",
+                json={"value": True},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 404, f"expected 404, got {r.status_code}: {r.text[:200]}"
+
+    def test_put_needs_certification_unrelated_value_error_not_swallowed(
+        self, client, mock_current_user
+    ):
+        """A genuine ValueError (not ProcessNotFoundError) must propagate — not be
+        mislabelled as a 404 by a broad ``except ValueError``.
+
+        The route no longer wraps the repo call, so the error surfaces (TestClient
+        re-raises server exceptions), proving ValueError is no longer swallowed.
+        """
+        process = self._owned_process(mock_current_user)
+
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_needs_certification = AsyncMock(
+            side_effect=ValueError("some unrelated invariant violated")
+        )
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            with pytest.raises(ValueError, match="some unrelated invariant violated"):
+                client.put(
+                    f"/processes/{process.id}/needs-certification",
+                    json={"value": True},
+                )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)

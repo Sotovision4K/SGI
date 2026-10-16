@@ -53,7 +53,9 @@ const PROCESS: Process = {
   company_id: 'comp-1',
   company_name: 'Acme Inc',
   iso_standard: 'iso9001',
+  perfilamiento_module: 'optimizacion',
   status: 'plan_ready',
+  needs_certification: false,
   created_at: '2026-01-01T00:00:00Z',
   updated_at: '2026-01-01T00:00:00Z',
 };
@@ -127,7 +129,10 @@ describe('PlanPage', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Plan de acción', level: 1 })).toBeInTheDocument();
-    expect(screen.getByText('Acme Inc · iso9001')).toBeInTheDocument();
+    // Subtitle is split across elements (company / separator / standard badge),
+    // so assert the parts rather than one combined text node.
+    expect(screen.getByText('Acme Inc')).toBeInTheDocument();
+    expect(screen.getByText('ISO 9001:2015')).toBeInTheDocument();
     // The narrative summary is no longer rendered — the plan view shows only the task list
     expect(screen.queryByText(/El plan prioriza controles documentales/)).not.toBeInTheDocument();
     expect(screen.getByText('Revisar política de calidad')).toBeInTheDocument();
@@ -141,7 +146,7 @@ describe('PlanPage', () => {
     renderPage();
 
     expect(screen.getByRole('heading', { name: 'Plan de acción', level: 1 })).toBeInTheDocument();
-    expect(screen.queryByText('Acme Inc · iso9001')).not.toBeInTheDocument();
+    expect(screen.queryByText('ISO 9001:2015')).not.toBeInTheDocument();
   });
 
   it('shows the loading message while the plan is loading', () => {

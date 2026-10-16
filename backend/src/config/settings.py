@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     database_url: str
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-sonnet-4-5"
+    # Profiling analysis uses a dedicated (newer) model, independent from the
+    # plan-generation model. Changing this only affects POST /profiling/analyze.
+    profiling_model: str = "claude-sonnet-5-5"
 
     # Email / SES (off by default for local dev)
     ses_sender_email: str = ""

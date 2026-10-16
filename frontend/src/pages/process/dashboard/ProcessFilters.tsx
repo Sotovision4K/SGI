@@ -2,25 +2,26 @@ import { Search, X } from 'lucide-react';
 import { Input } from '../../../components/ui/Input';
 import { MultiSelect } from '../../../components/ui/MultiSelect';
 import { cn } from '../../../lib/cn';
+import { MODULE_LABELS, type PerfilamientoModule } from '../../../api/process';
 
 const ESTADO_OPTIONS = [
   { value: 'in_diagnosis', label: 'En diagnóstico' },
   { value: 'plan_ready', label: 'Plan listo' },
   { value: 'in_progress', label: 'En progreso' },
   { value: 'completed', label: 'Completado' },
+  { value: 'profiling_pending', label: 'Perfilamiento pendiente' },
 ];
 
-const NORMA_OPTIONS = [
-  { value: 'iso9001', label: 'ISO 9001:2015' },
-  { value: 'iso14001', label: 'ISO 14001:2015' },
-  { value: 'iso45001', label: 'ISO 45001:2018' },
-];
+const MODULO_OPTIONS = (Object.keys(MODULE_LABELS) as PerfilamientoModule[]).map((key) => ({
+  value: key,
+  label: MODULE_LABELS[key],
+}));
 
 interface ProcessFiltersProps {
   selectedEstados: string[];
   setSelectedEstados: (v: string[]) => void;
-  selectedNormas: string[];
-  setSelectedNormas: (v: string[]) => void;
+  selectedModules: string[];
+  setSelectedModules: (v: string[]) => void;
   searchQuery: string;
   setSearchQuery: (v: string) => void;
 }
@@ -28,19 +29,19 @@ interface ProcessFiltersProps {
 export function ProcessFilters({
   selectedEstados,
   setSelectedEstados,
-  selectedNormas,
-  setSelectedNormas,
+  selectedModules,
+  setSelectedModules,
   searchQuery,
   setSearchQuery,
 }: ProcessFiltersProps) {
   const hasFilters = searchQuery.trim() !== '' ||
     selectedEstados.length > 0 ||
-    selectedNormas.length > 0;
+    selectedModules.length > 0;
 
   function handleClear() {
     setSearchQuery('');
     setSelectedEstados([]);
-    setSelectedNormas([]);
+    setSelectedModules([]);
   }
 
   return (
@@ -67,10 +68,10 @@ export function ProcessFilters({
       />
 
       <MultiSelect
-        label="Norma"
-        options={NORMA_OPTIONS}
-        selected={selectedNormas}
-        onChange={setSelectedNormas}
+        label="Módulo"
+        options={MODULO_OPTIONS}
+        selected={selectedModules}
+        onChange={setSelectedModules}
         className="w-full sm:w-auto sm:min-w-[170px]"
       />
 

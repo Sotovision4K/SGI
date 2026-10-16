@@ -180,7 +180,7 @@ async def _generate(
         await repo.fail_job(process_id, JobErrorCode.MERGE_FAILED)
         return
 
-    iso_standard = process.iso_standard.value
+    iso_standard = process.iso_standard.value if process.iso_standard else ""
     company_name = await repo.get_company_name(process.company_id)
 
     questions = get_questions_for_standard(iso_standard)

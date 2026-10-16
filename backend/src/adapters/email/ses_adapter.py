@@ -36,18 +36,22 @@ class SESAdapter(EmailPort):
 
         safe_name = html_escape.escape(company_name)
         safe_iso = html_escape.escape(iso_standard)
+        # Certification is deferred, so iso_standard is often blank. Only render
+        # the ISO clause when there is actually a standard, to avoid the dangling
+        # "bajo la norma ." copy.
+        iso_html = f" bajo la norma <strong>{safe_iso}</strong>" if iso_standard.strip() else ""
+        iso_text = f" bajo la norma {iso_standard}" if iso_standard.strip() else ""
         subject = f"Bienvenido a SGI Pro — {safe_name}"
         html = (
             f"<h2>¡Bienvenido a SGI Pro!</h2>"
             f"<p>Se ha iniciado el proceso de certificación para "
-            f"<strong>{safe_name}</strong> bajo la norma "
-            f"<strong>{safe_iso}</strong>.</p>"
+            f"<strong>{safe_name}</strong>{iso_html}.</p>"
             f"<p>Acceda a su panel para continuar el diagnóstico.</p>"
         )
         text_body = (
             f"Bienvenido a SGI Pro.\n\n"
-            f"Se ha iniciado el proceso de certificacion para {company_name} "
-            f"bajo la norma {iso_standard}.\n"
+            f"Se ha iniciado el proceso de certificacion para {company_name}"
+            f"{iso_text}.\n"
             f"Acceda a su panel para continuar el diagnostico."
         )
 

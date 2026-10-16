@@ -12,6 +12,7 @@ const STATUS_DOT: Record<Process['status'], string> = {
   plan_ready: 'bg-[#F97316]',
   in_progress: 'bg-[#0066CC]',
   completed: 'bg-[#10B981]',
+  profiling_pending: 'bg-[#94A3B8]',
 };
 
 const STATUS_LABEL: Record<Process['status'], { label: string; className: string }> = {
@@ -19,6 +20,7 @@ const STATUS_LABEL: Record<Process['status'], { label: string; className: string
   plan_ready: { label: 'Plan listo', className: 'bg-status-review-bg text-status-review-text' },
   in_progress: { label: 'En progreso', className: 'bg-status-in-progress-bg text-status-in-progress-text' },
   completed: { label: 'Completado', className: 'bg-status-completed-bg text-status-completed-text' },
+  profiling_pending: { label: 'Perfilamiento pendiente', className: 'bg-status-pending-bg text-status-pending-text' },
 };
 
 function formatDate(dateString: string): string {

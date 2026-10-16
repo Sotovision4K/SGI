@@ -1,0 +1,46 @@
+
+
+	PRE DIAGNÓSTICO: 
+
+
+SEGÚN NORMA : se ajusta el pre diagnóstico. 
+
+Actividad económica 
+tipo de riesgo 1 a 5 que se cotiza actualmente 
+
+hacer una matriz de rango de precio según variables CIIU Y riesgo (rango de inversión)
+
+
+rango de personas cambia después de la norma 
+ARL a la que está asociada
+y cuánto riesgo cotiza la ARL
+cuanta persona en cada riesgo. 
+
+BUG : TIPO DE NEGOCIO SE DEBBE LLENAR SOLO
+
+en el campo de subcontrato agregar otro para textbox
+
+pre diagnóstico se debe de hacer antes de elegir alguna norma
+
+te quieres certificar o no? bobo hpta
+
+alcance parcial : que sede?? 
+
+tipo de madurez : falta ninguno
+
+falta espacio si existe persona quien lidera el proyecto
+
+n¿Lo implementarán internamente o con consultor externo?*
+¿Lo implementarán internamente o con consultor externo?* noooooooooo
+
+
+presupuesto es mejor por salarios mínimos y mensuales 
+
+objetivos estratégicos : alinearlos a cada norma
+
+en vez de enviar : guardar
+
+IA : MODELAR POSIBLE COTIZACIÓN, CUÁNTO TIEMPO, QUE IDENTIFIQUE LO MÁS CRÍTICO (OPORTUNIDADES DE MEJORA), EXPECTATIVA DE CLIENTE
+
+para moodelar : valor de hora 
+cuánto tiempo : 

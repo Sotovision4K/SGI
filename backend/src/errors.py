@@ -18,6 +18,10 @@ policy.
 from enum import Enum
 
 
+class ProcessNotFoundError(Exception):
+    """A process row does not exist or is not owned by the caller. Maps to 404."""
+
+
 class PlanGenerationError(Exception):
     """Base error for the action-plan generation pipeline.
 

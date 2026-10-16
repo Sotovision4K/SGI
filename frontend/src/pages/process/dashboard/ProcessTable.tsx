@@ -11,6 +11,7 @@ import {
 import { Badge } from '../../../components/ui/Badge';
 import { ConfirmDialog } from '../../../components/ui/ConfirmDialog';
 import { useCompleteProcess, useReopenProcess } from '../../../hooks/useProcesses';
+import { processRequirementLabel } from '../../../api/process';
 import type { Process } from '../../../api/process';
 
 interface ProcessTableProps {
@@ -19,12 +20,6 @@ interface ProcessTableProps {
   onViewPlan: (id: string) => void;
   onDelete: (id: string) => void;
 }
-
-const ISO_LABELS: Record<Process['iso_standard'], string> = {
-  iso9001: 'ISO 9001:2015',
-  iso14001: 'ISO 14001:2015',
-  iso45001: 'ISO 45001:2018',
-};
 
 const STATUS_CONFIG: Record<Process['status'], { label: string; className: string }> = {
   in_diagnosis: {
@@ -42,6 +37,10 @@ const STATUS_CONFIG: Record<Process['status'], { label: string; className: strin
   completed: {
     label: 'Completado',
     className: 'bg-status-completed-bg text-status-completed-text',
+  },
+  profiling_pending: {
+    label: 'Perfilamiento pendiente',
+    className: 'bg-status-pending-bg text-status-pending-text',
   },
 };
 
@@ -128,7 +127,7 @@ export function ProcessTable({ processes, onView, onViewPlan, onDelete }: Proces
                     {process.company_name || '(sin empresa)'}
                   </TableCell>
                   <TableCell className="text-app-text text-sm truncate min-w-0">
-                    {ISO_LABELS[process.iso_standard] ?? process.iso_standard}
+                    {processRequirementLabel(process)}
                   </TableCell>
                   <TableCell>
                     <Badge variant="status" className={status.className}>

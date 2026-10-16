@@ -5,6 +5,7 @@ import {
   deleteProcess,
   completeProcess,
   reopenProcess,
+  setNeedsCertification,
   type CreateProcessInput,
 } from '../api/process';
 import { useApiAuthBridge } from '../lib/use-api-auth';
@@ -74,6 +75,23 @@ export function useReopenProcess() {
       queryClient.invalidateQueries({ queryKey: ['processes'] });
       queryClient.invalidateQueries({ queryKey: ['process'] });
       toast.success('Proceso reabierto');
+    },
+    onError: (error) => {
+      toast.danger(getErrorMessage(error), { title: 'Error' });
+    },
+  });
+}
+
+export function useSetNeedsCertification() {
+  const { getToken } = useApiAuthBridge();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ processId, value }: { processId: string; value: boolean }) =>
+      setNeedsCertification(processId, value, { token: getToken() }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['processes'] });
+      queryClient.invalidateQueries({ queryKey: ['process'] });
+      toast.success('Preferencia de certificación actualizada');
     },
     onError: (error) => {
       toast.danger(getErrorMessage(error), { title: 'Error' });

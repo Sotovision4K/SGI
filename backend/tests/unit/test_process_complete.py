@@ -1,11 +1,10 @@
 """Tests for complete/reopen process endpoints (Step 8, tests 10-14).
 
 NOTE on test 14 (non-owner): the existing `_require_process_owner` helper
-returns 404 for both missing and non-owned processes (to avoid leaking the
-existence of a resource — security-by-obscurity pattern established across
-the routes). The spec text mentions "(403)" but instructs us to reuse
-`_require_process_owner`, which raises 404. We assert 404 to stay consistent
-with the established helper contract and existing tests.
+raises ``ProcessNotFoundError`` for both missing and non-owned processes (to
+avoid leaking the existence of a resource — security-by-obscurity pattern
+established across the routes). The global handler maps it to 404. We assert
+ProcessNotFoundError to stay consistent with the established helper contract.
 """
 
 import uuid
@@ -15,6 +14,7 @@ import pytest
 from fastapi import HTTPException
 
 from src.domain.entities.process import Process, ProcessStatus, IsoStandard
+from src.errors import ProcessNotFoundError
 
 
 def _make_process(
@@ -106,11 +106,10 @@ class TestCompleteProcess:
         repo = AsyncMock()
         repo.get_process = AsyncMock(return_value=process)
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(ProcessNotFoundError):
             await complete_process(process.id, {"sub": owner_sub}, repo, mock_settings)
 
-        # _require_process_owner raises 404 (does not leak resource existence).
-        assert exc_info.value.status_code == 404
+        # _require_process_owner raises ProcessNotFoundError → global 404 handler.
         repo.update_process_status.assert_not_awaited()
 
 

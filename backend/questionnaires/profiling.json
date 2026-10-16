@@ -1,0 +1,1777 @@
+{
+  "iso_standard": "profiling",
+  "title": "Perfilamiento adaptativo para consultores",
+  "description": "Formularios de perfilamiento adaptativo para consultores. Cada formulario inicia con 7 preguntas base, una pregunta selectora de necesidad y 12 preguntas del módulo activado.",
+  "_comment": "Transformado desde formularios_perfilamiento (1).json al formato de backend/questionnaires/. Extensiones preservadas: alimenta (salida del motor), mostrar_si (lógica adaptativa), redirigir_formulario (selector) y reglas_motor_sst (puntaje SST).",
+  "groups": [
+    {
+      "id": "perfil",
+      "title": "Perfil de la empresa",
+      "clauses": [],
+      "questions": [
+        {
+          "id": "base_01",
+          "type": "text",
+          "label": "Razón social y NIT de la empresa",
+          "required": true,
+          "alimenta": [
+            "perfil"
+          ]
+        },
+        {
+          "id": "base_02",
+          "type": "text",
+          "label": "Actividad económica principal (código CIIU y descripción breve)",
+          "required": true,
+          "alimenta": [
+            "perfil",
+            "recomendacion"
+          ]
+        },
+        {
+          "id": "base_03",
+          "type": "text",
+          "label": "¿Cuántos empleados directos tiene la empresa?",
+          "required": true,
+          "hint": "Ingrese un número",
+          "alimenta": [
+            "perfil",
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ]
+        },
+        {
+          "id": "base_04",
+          "type": "text",
+          "label": "¿Cuántas sedes, plantas u obras operan dentro del alcance del proyecto?",
+          "required": true,
+          "hint": "Ingrese un número",
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "contexto",
+      "title": "Contexto y madurez",
+      "clauses": [],
+      "questions": [
+        {
+          "id": "base_05",
+          "type": "select",
+          "label": "¿Cuál es el nivel de madurez actual de la gestión de la empresa?",
+          "required": true,
+          "options": [
+            "Sin procesos documentados",
+            "Documentación parcial",
+            "Procesos documentados sin auditorías",
+            "Sistema de gestión implementado y auditado"
+          ],
+          "alimenta": [
+            "perfil",
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ]
+        },
+        {
+          "id": "base_06",
+          "type": "select",
+          "label": "¿Cuál es el motivo principal por el que busca apoyo?",
+          "required": true,
+          "options": [
+            "Exigencia de un cliente",
+            "Licitaciones o contratación",
+            "Obligación legal o requerimiento de autoridad",
+            "Mejora interna",
+            "Presión de inversionistas o banca",
+            "Otro"
+          ],
+          "alimenta": [
+            "perfil",
+            "recomendacion",
+            "cotizacion"
+          ]
+        },
+        {
+          "id": "base_07",
+          "type": "select",
+          "label": "¿En qué plazo necesita tener resultados?",
+          "required": true,
+          "options": [
+            "Menos de 3 meses",
+            "Entre 3 y 6 meses",
+            "Entre 6 y 12 meses",
+            "Más de 12 meses",
+            "Sin fecha definida"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "selector",
+      "title": "Necesidad principal",
+      "clauses": [],
+      "questions": [
+        {
+          "id": "base_08",
+          "type": "select",
+          "label": "¿Cuál es la necesidad principal del cliente? (define el módulo de preguntas)",
+          "required": true,
+          "options": [
+            "Optimización de Procesos",
+            "Seguridad y salud en el trabajo",
+            "Normas técnicas sectoriales",
+            "Sostenibilidad y ambiental",
+            "Planificación estratégica"
+          ],
+          "default": "Optimización de Procesos",
+          "alimenta": [
+            "recomendacion"
+          ],
+          "redirigir_formulario": {
+            "Calidad y mejora continua": "FORM-CAL",
+            "Seguridad y salud en el trabajo": "FORM-SST",
+            "Normas técnicas sectoriales": "FORM-NTS",
+            "Sostenibilidad y ambiental": "FORM-SOS",
+            "Planificación estratégica": "FORM-EST"
+          }
+        }
+      ]
+    },
+    {
+      "id": "optimizacion",
+      "title": "Módulo: Optimización de Procesos",
+      "clauses": [],
+      "description": "Recomienda entre estandarización de procesos, ISO 9001, sistema integrado o mejora continua, con cotización y tiempo estimado.",
+      "questions": [
+        {
+          "id": "opt_01",
+          "type": "select",
+          "label": "¿Qué busca lograr en calidad?",
+          "required": true,
+          "options": [
+            "Estandarizar procesos",
+            "Certificarse en ISO 9001",
+            "Integrar varios sistemas de gestión",
+            "Mejora continua (Lean, Six Sigma, ciclo PHVA)",
+            "No sabe, necesita orientación"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_02",
+          "type": "select",
+          "label": "¿Sus clientes, licitaciones o mercados exigen certificación de calidad?",
+          "required": true,
+          "options": [
+            "Sí, un cliente clave lo exige",
+            "Sí, para licitaciones",
+            "Sí, para exportar",
+            "No"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_03",
+          "type": "select",
+          "label": "¿Cuántos procesos (misionales, estratégicos y de apoyo) tiene la empresa?",
+          "required": true,
+          "options": [
+            "Menos de 5",
+            "5 a 10",
+            "11 a 20",
+            "Más de 20"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_04",
+          "type": "select",
+          "label": "¿Qué porcentaje de los procesos está documentado (caracterización, procedimientos, formatos)?",
+          "required": true,
+          "options": [
+            "0 a 25%",
+            "26 a 50%",
+            "51 a 75%",
+            "Más de 75%"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_05",
+          "type": "select",
+          "label": "¿Tiene procesos críticos tercerizados?",
+          "required": true,
+          "options": [
+            "Sí",
+            "No"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_06",
+          "type": "select",
+          "label": "¿Cómo hace seguimiento a indicadores de gestión?",
+          "required": true,
+          "options": [
+            "No mide",
+            "Mide algunos en Excel",
+            "Tablero formal con revisión periódica"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_07",
+          "type": "select",
+          "label": "¿Realiza auditorías internas?",
+          "required": true,
+          "options": [
+            "Nunca",
+            "Ocasionalmente",
+            "Programa anual formal"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_08",
+          "type": "select",
+          "label": "¿Con qué frecuencia tiene quejas, reprocesos o no conformidades?",
+          "required": true,
+          "options": [
+            "Casi nunca",
+            "Ocasionalmente",
+            "Frecuentemente",
+            "No las registra"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_09",
+          "type": "chips",
+          "label": "¿Qué otras normas desea integrar o ya tiene implementadas?",
+          "required": true,
+          "options": [
+            "ISO 14001",
+            "ISO 45001",
+            "ISO 27001",
+            "ISO 22000",
+            "Otra",
+            "Ninguna"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_10",
+          "type": "select",
+          "label": "¿Hasta dónde debe llegar el acompañamiento?",
+          "required": true,
+          "options": [
+            "Solo diagnóstico",
+            "Diseño e implementación",
+            "Implementación y acompañamiento a auditoría de certificación",
+            "Implementación y mantenimiento posterior"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_11",
+          "type": "select",
+          "label": "¿Cuenta con un líder interno para el proyecto?",
+          "required": true,
+          "options": [
+            "Sí, con dedicación",
+            "Sí, parcial",
+            "No"
+          ],
+          "alimenta": [
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        },
+        {
+          "id": "opt_12",
+          "type": "select",
+          "label": "¿Cuál es el presupuesto estimado?",
+          "required": true,
+          "options": [
+            "Menos de 10 millones COP",
+            "10 a 30 millones COP",
+            "30 a 80 millones COP",
+            "Más de 80 millones COP",
+            "Aún no definido"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Optimización de Procesos"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sst",
+      "title": "Módulo: Seguridad y salud en el trabajo",
+      "clauses": [],
+      "description": "Determina si conviene implementar estándares mínimos (Resolución 0312 de 2019), el SG-SST completo del Decreto 1072 de 2015 o ISO 45001, con cotización y tiempo estimado.",
+      "questions": [
+        {
+          "id": "sst_01",
+          "type": "select",
+          "label": "¿Cuál es el objetivo principal de la empresa en SST?",
+          "required": true,
+          "options": [
+            "Cumplir lo mínimo exigido por la ley",
+            "Tener un SG-SST completo y funcional",
+            "Certificarse en ISO 45001",
+            "Responder a un requerimiento de la ARL o del Ministerio",
+            "No sabe, necesita orientación"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_02",
+          "type": "select",
+          "label": "¿Cuál es la clase de riesgo ARL de la empresa?",
+          "required": true,
+          "options": [
+            "I",
+            "II",
+            "III",
+            "IV",
+            "V"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_03",
+          "type": "select",
+          "label": "¿Cuántos trabajadores hay en total (directos, contratistas y temporales)?",
+          "required": true,
+          "options": [
+            "10 o menos",
+            "11 a 50",
+            "51 a 200",
+            "Más de 200"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_04",
+          "type": "chips",
+          "label": "¿Qué peligros críticos existen en la operación?",
+          "required": true,
+          "options": [
+            "Trabajo en alturas",
+            "Espacios confinados",
+            "Riesgo químico",
+            "Riesgo eléctrico",
+            "Maquinaria",
+            "Riesgo biomecánico",
+            "Riesgo psicosocial",
+            "Ninguno de los anteriores"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_05",
+          "type": "select",
+          "label": "¿Cómo fue la siniestralidad del último año (accidentes y enfermedad laboral)?",
+          "required": true,
+          "options": [
+            "Sin accidentes ni enfermedad laboral",
+            "Accidentes leves",
+            "Accidentes graves o mortales, o enfermedad laboral calificada"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_06",
+          "type": "select",
+          "label": "¿Cuál fue el resultado de la última autoevaluación de estándares mínimos (Resolución 0312 de 2019)?",
+          "required": true,
+          "options": [
+            "No se ha realizado",
+            "Menos de 60% (crítico)",
+            "Entre 60% y 85% (moderadamente aceptable)",
+            "Más de 85% (aceptable)"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_07",
+          "type": "chips",
+          "label": "¿Qué elementos del SG-SST ya existen?",
+          "required": true,
+          "options": [
+            "Responsable SST con licencia",
+            "COPASST o vigía",
+            "Comité de convivencia",
+            "Matriz de peligros y riesgos",
+            "Plan de emergencias",
+            "Programa de capacitación",
+            "Política y objetivos de SST",
+            "Ninguno"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo",
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_08",
+          "type": "select",
+          "label": "¿Algún cliente, contratante o licitación exige ISO 45001?",
+          "required": true,
+          "options": [
+            "Sí, un cliente clave lo exige",
+            "Sí, lo piden en licitaciones",
+            "Lo valoran, pero no lo exigen",
+            "No"
+          ],
+          "alimenta": [
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_09",
+          "type": "chips",
+          "label": "¿Qué sistemas de gestión certificables tiene ya implementados?",
+          "required": true,
+          "options": [
+            "ISO 9001",
+            "ISO 14001",
+            "Otro",
+            "Ninguno"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_10",
+          "type": "select",
+          "label": "¿Trabaja con contratistas en actividades de alto riesgo?",
+          "required": true,
+          "options": [
+            "Sí, de forma permanente",
+            "Sí, ocasionalmente",
+            "No"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_11",
+          "type": "select",
+          "label": "¿Qué compromiso y recursos tiene la alta dirección para sostener el sistema?",
+          "required": true,
+          "options": [
+            "Alto: responsable dedicado y presupuesto",
+            "Medio: responsable parcial",
+            "Bajo: sin recursos asignados"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        },
+        {
+          "id": "sst_12",
+          "type": "select",
+          "label": "¿Cuál es el presupuesto estimado?",
+          "required": true,
+          "options": [
+            "Menos de 10 millones COP",
+            "10 a 30 millones COP",
+            "30 a 80 millones COP",
+            "Más de 80 millones COP",
+            "Aún no definido"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Seguridad y salud en el trabajo"
+          }
+        }
+      ]
+    },
+    {
+      "id": "nts",
+      "title": "Módulo: Normas técnicas sectoriales",
+      "clauses": [],
+      "description": "Identifica las normas y reglamentos aplicables al sector, con cotización y tiempo estimado.",
+      "questions": [
+        {
+          "id": "nts_01",
+          "type": "select",
+          "label": "¿En qué sector específico opera la empresa?",
+          "required": true,
+          "options": [
+            "Alimentos y bebidas",
+            "Salud",
+            "Construcción",
+            "Tecnología y seguridad de la información",
+            "Energía",
+            "Manufactura",
+            "Turismo y hotelería",
+            "Agro",
+            "Otro"
+          ],
+          "alimenta": [
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_02",
+          "type": "text",
+          "label": "¿Hay alguna norma o estándar que el cliente ya tenga identificado?",
+          "required": true,
+          "alimenta": [
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_03",
+          "type": "select",
+          "label": "¿Sus productos o servicios requieren registro, permiso o reglamento técnico?",
+          "required": true,
+          "options": [
+            "Sí, registro sanitario o equivalente",
+            "Sí, reglamento técnico",
+            "Sí, habilitación de una superintendencia",
+            "No",
+            "No sabe"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_04",
+          "type": "select",
+          "label": "¿A qué mercado destina su producto o servicio?",
+          "required": true,
+          "options": [
+            "Local",
+            "Regional",
+            "Exportación"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_05",
+          "type": "chips",
+          "label": "¿Qué exigen sus clientes clave?",
+          "required": true,
+          "options": [
+            "Buenas prácticas (BPM, BPA, BPL)",
+            "HACCP o inocuidad",
+            "Seguridad de la información",
+            "Gestión de dispositivos o productos regulados",
+            "Ninguna exigencia específica",
+            "No sabe"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_06",
+          "type": "select",
+          "label": "¿Hay incumplimientos legales o sanitarios pendientes?",
+          "required": true,
+          "options": [
+            "Sí",
+            "No",
+            "No sabe"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_07",
+          "type": "select",
+          "label": "¿Qué alcance debe tener la certificación?",
+          "required": true,
+          "options": [
+            "Producto",
+            "Proceso",
+            "Sistema de gestión",
+            "Personas",
+            "No sabe"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_08",
+          "type": "select",
+          "label": "¿Cuántas líneas de producto o servicio quedan dentro del alcance?",
+          "required": true,
+          "options": [
+            "1",
+            "2 a 5",
+            "6 a 10",
+            "Más de 10"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_09",
+          "type": "select",
+          "label": "¿Cómo está la infraestructura frente a los requisitos de la norma?",
+          "required": true,
+          "options": [
+            "Adecuada",
+            "Cumple parcialmente",
+            "Requiere inversión importante",
+            "No se ha evaluado"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_10",
+          "type": "select",
+          "label": "¿Cuenta con personal técnico para sostener la norma?",
+          "required": true,
+          "options": [
+            "Sí, suficiente",
+            "Parcialmente",
+            "No"
+          ],
+          "alimenta": [
+            "tiempo",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_11",
+          "type": "select",
+          "label": "¿Ya definió el organismo certificador?",
+          "required": true,
+          "options": [
+            "Sí",
+            "No"
+          ],
+          "alimenta": [
+            "tiempo",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        },
+        {
+          "id": "nts_12",
+          "type": "select",
+          "label": "¿Cuál es el presupuesto estimado?",
+          "required": true,
+          "options": [
+            "Menos de 10 millones COP",
+            "10 a 30 millones COP",
+            "30 a 80 millones COP",
+            "Más de 80 millones COP",
+            "Aún no definido"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Normas técnicas sectoriales"
+          }
+        }
+      ]
+    },
+    {
+      "id": "sos",
+      "title": "Módulo: Sostenibilidad y ambiental",
+      "clauses": [],
+      "description": "Recomienda entre ISO 14001, huella de carbono, reporte ESG u otros estándares, con cotización y tiempo estimado.",
+      "questions": [
+        {
+          "id": "sos_01",
+          "type": "select",
+          "label": "¿Qué busca el cliente en sostenibilidad?",
+          "required": true,
+          "options": [
+            "Certificación ISO 14001",
+            "Medición de huella de carbono",
+            "Reporte ESG o de sostenibilidad (GRI y similares)",
+            "Gestión de energía (ISO 50001)",
+            "Economía circular",
+            "No sabe, necesita orientación"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_02",
+          "type": "chips",
+          "label": "¿Qué impactos ambientales son relevantes en la operación?",
+          "required": true,
+          "options": [
+            "Residuos peligrosos",
+            "Vertimientos",
+            "Emisiones atmosféricas",
+            "Alto consumo de agua",
+            "Alto consumo de energía",
+            "Ruido",
+            "Ninguno significativo"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_03",
+          "type": "select",
+          "label": "¿Cuál es la situación de permisos y licencias ambientales?",
+          "required": true,
+          "options": [
+            "Vigentes",
+            "Vencidos o en trámite",
+            "No tiene",
+            "No aplica"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_04",
+          "type": "select",
+          "label": "¿Tiene requerimientos o sanciones de la autoridad ambiental?",
+          "required": true,
+          "options": [
+            "Sí",
+            "No"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_05",
+          "type": "chips",
+          "label": "¿Quién ejerce presión para que la empresa avance en sostenibilidad?",
+          "required": true,
+          "options": [
+            "Clientes",
+            "Inversionistas",
+            "Banca",
+            "Regulación",
+            "Ninguno"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_06",
+          "type": "chips",
+          "label": "¿Qué mide actualmente?",
+          "required": true,
+          "options": [
+            "Huella de carbono",
+            "Consumo de agua y energía",
+            "Generación de residuos",
+            "Indicadores sociales",
+            "Nada"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_07",
+          "type": "select",
+          "label": "¿Publica algún reporte de sostenibilidad?",
+          "required": true,
+          "options": [
+            "No",
+            "Informal",
+            "Sí, bajo un estándar (GRI, SASB u otro)"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_08",
+          "type": "select",
+          "label": "¿Evalúa a sus proveedores con criterios ambientales o sociales?",
+          "required": true,
+          "options": [
+            "No",
+            "Parcialmente",
+            "Sí, de forma sistemática"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_09",
+          "type": "chips",
+          "label": "¿Qué políticas formales existen?",
+          "required": true,
+          "options": [
+            "Política ambiental",
+            "Derechos humanos",
+            "Anticorrupción",
+            "Diversidad e inclusión",
+            "Ninguna"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_10",
+          "type": "select",
+          "label": "¿El alcance cubre toda la organización o solo parte?",
+          "required": true,
+          "options": [
+            "Toda la organización",
+            "Solo algunas sedes o procesos"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_11",
+          "type": "select",
+          "label": "¿Hay un responsable interno de sostenibilidad o ambiental?",
+          "required": true,
+          "options": [
+            "Sí, con dedicación",
+            "Sí, parcial",
+            "No"
+          ],
+          "alimenta": [
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        },
+        {
+          "id": "sos_12",
+          "type": "select",
+          "label": "¿Cuál es el presupuesto estimado?",
+          "required": true,
+          "options": [
+            "Menos de 10 millones COP",
+            "10 a 30 millones COP",
+            "30 a 80 millones COP",
+            "Más de 80 millones COP",
+            "Aún no definido"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Sostenibilidad y ambiental"
+          }
+        }
+      ]
+    },
+    {
+      "id": "planificacion",
+      "title": "Módulo: Planificación estratégica",
+      "clauses": [],
+      "description": "Define el enfoque de planeación y despliegue, con cotización y tiempo estimado.",
+      "questions": [
+        {
+          "id": "est_01",
+          "type": "select",
+          "label": "¿Qué necesita el cliente en planificación estratégica?",
+          "required": true,
+          "options": [
+            "Formular el plan estratégico",
+            "Actualizar el plan existente",
+            "Implementar BSC u OKR",
+            "Desplegar y hacer seguimiento al plan",
+            "Acompañar un proceso de cambio o transformación"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_02",
+          "type": "select",
+          "label": "¿Cuál es el estado del plan estratégico actual?",
+          "required": true,
+          "options": [
+            "No existe",
+            "Existe pero está desactualizado",
+            "Está vigente"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_03",
+          "type": "select",
+          "label": "¿Qué horizonte de planeación desea?",
+          "required": true,
+          "options": [
+            "1 año",
+            "3 años",
+            "5 años o más"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_04",
+          "type": "select",
+          "label": "¿Están definidas la misión, visión y valores?",
+          "required": true,
+          "options": [
+            "No",
+            "Informalmente",
+            "Sí, formalizadas y comunicadas"
+          ],
+          "alimenta": [
+            "tiempo",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_05",
+          "type": "select",
+          "label": "¿Realizó análisis de contexto (DOFA, PESTEL, partes interesadas)?",
+          "required": true,
+          "options": [
+            "No",
+            "Parcialmente",
+            "Sí, actualizado"
+          ],
+          "alimenta": [
+            "tiempo",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_06",
+          "type": "select",
+          "label": "¿Tiene indicadores estratégicos y tablero de seguimiento?",
+          "required": true,
+          "options": [
+            "No",
+            "Algunos",
+            "Sí, con revisión periódica"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_07",
+          "type": "select",
+          "label": "¿Con qué frecuencia revisa la dirección el avance estratégico?",
+          "required": true,
+          "options": [
+            "Nunca",
+            "Ocasionalmente",
+            "Mensual o trimestral"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_08",
+          "type": "select",
+          "label": "¿Qué tan involucrada está la alta dirección en el proyecto?",
+          "required": true,
+          "options": [
+            "Alta",
+            "Media",
+            "Baja"
+          ],
+          "alimenta": [
+            "tiempo",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_09",
+          "type": "select",
+          "label": "¿Cuántas áreas o líderes participarán?",
+          "required": true,
+          "options": [
+            "Menos de 5",
+            "5 a 10",
+            "Más de 10"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "tiempo"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_10",
+          "type": "select",
+          "label": "¿Prefiere alguna metodología?",
+          "required": true,
+          "options": [
+            "Balanced Scorecard",
+            "OKR",
+            "Hoshin Kanri",
+            "Sin preferencia"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_11",
+          "type": "select",
+          "label": "¿Necesita articular la estrategia con sistemas de gestión certificables?",
+          "required": true,
+          "options": [
+            "Sí",
+            "No",
+            "No sabe"
+          ],
+          "alimenta": [
+            "recomendacion",
+            "cotizacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        },
+        {
+          "id": "est_12",
+          "type": "select",
+          "label": "¿Cuál es el presupuesto estimado?",
+          "required": true,
+          "options": [
+            "Menos de 10 millones COP",
+            "10 a 30 millones COP",
+            "30 a 80 millones COP",
+            "Más de 80 millones COP",
+            "Aún no definido"
+          ],
+          "alimenta": [
+            "cotizacion",
+            "recomendacion"
+          ],
+          "mostrar_si": {
+            "pregunta": "base_08",
+            "igual_a": "Planificación estratégica"
+          }
+        }
+      ]
+    }
+  ],
+  "reglas_motor_sst": {
+    "descripcion": "Reglas orientativas de puntaje para decidir la ruta de implementación en SST. Se suman los puntos de cada regla cuyas condiciones se cumplan; la ruta con más puntos es la recomendada, sujeta a las reglas de bloqueo. Deben ser validadas y ajustadas por el consultor.",
+    "nota_legal": "El Decreto 1072 de 2015 (Libro 2, Parte 2, Título 4, Capítulo 6) obliga a todos los empleadores a implementar el SG-SST y la Resolución 0312 de 2019 fija los estándares mínimos con los que se evalúa. ISO 45001 es voluntaria y certificable. Por eso las rutas son escalonadas: la ruta ISO 45001 se construye sobre la base legal. Verificar vigencia normativa antes de programar las reglas.",
+    "rutas": {
+      "R0312": "Estándares mínimos (Resolución 0312 de 2019): SG-SST simplificado de 7 o 21 estándares, para empresas pequeñas y de bajo riesgo.",
+      "R1072": "SG-SST completo conforme al Decreto 1072 de 2015, evaluado con los 60 estándares de la Resolución 0312.",
+      "R45001": "Sistema de gestión SST certificable ISO 45001, sobre la base legal del Decreto 1072."
+    },
+    "referencia_estandares_0312": {
+      "7": "10 o menos trabajadores y riesgo I, II o III",
+      "21": "11 a 50 trabajadores y riesgo I, II o III",
+      "60": "10 o menos trabajadores con riesgo IV o V; 11 a 50 con riesgo IV o V; más de 50 trabajadores con cualquier riesgo"
+    },
+    "reglas": [
+      {
+        "id": "T1",
+        "condiciones": [
+          {
+            "pregunta": "sst_03",
+            "igual_a": "10 o menos"
+          },
+          {
+            "pregunta": "sst_02",
+            "en": [
+              "I",
+              "II",
+              "III"
+            ]
+          }
+        ],
+        "puntos": {
+          "R0312": 3
+        }
+      },
+      {
+        "id": "T2",
+        "condiciones": [
+          {
+            "pregunta": "sst_03",
+            "igual_a": "11 a 50"
+          },
+          {
+            "pregunta": "sst_02",
+            "en": [
+              "I",
+              "II",
+              "III"
+            ]
+          }
+        ],
+        "puntos": {
+          "R0312": 2,
+          "R1072": 1
+        }
+      },
+      {
+        "id": "T3",
+        "condiciones": [
+          {
+            "pregunta": "sst_02",
+            "en": [
+              "IV",
+              "V"
+            ]
+          }
+        ],
+        "puntos": {
+          "R1072": 3
+        }
+      },
+      {
+        "id": "T4",
+        "condiciones": [
+          {
+            "pregunta": "sst_03",
+            "en": [
+              "51 a 200",
+              "Más de 200"
+            ]
+          }
+        ],
+        "puntos": {
+          "R1072": 3
+        }
+      },
+      {
+        "id": "T5",
+        "condiciones": [
+          {
+            "pregunta": "sst_03",
+            "igual_a": "Más de 200"
+          }
+        ],
+        "puntos": {
+          "R45001": 1
+        }
+      },
+      {
+        "id": "P1",
+        "condiciones": [
+          {
+            "pregunta": "sst_04",
+            "contiene_alguno": [
+              "Trabajo en alturas",
+              "Espacios confinados",
+              "Riesgo químico",
+              "Riesgo eléctrico"
+            ]
+          }
+        ],
+        "puntos": {
+          "R1072": 2,
+          "R45001": 1
+        }
+      },
+      {
+        "id": "S1",
+        "condiciones": [
+          {
+            "pregunta": "sst_05",
+            "igual_a": "Accidentes graves o mortales, o enfermedad laboral calificada"
+          }
+        ],
+        "puntos": {
+          "R1072": 2
+        }
+      },
+      {
+        "id": "S2",
+        "condiciones": [
+          {
+            "pregunta": "sst_05",
+            "igual_a": "Accidentes leves"
+          }
+        ],
+        "puntos": {
+          "R1072": 1
+        }
+      },
+      {
+        "id": "A1",
+        "condiciones": [
+          {
+            "pregunta": "sst_06",
+            "en": [
+              "No se ha realizado",
+              "Menos de 60% (crítico)"
+            ]
+          }
+        ],
+        "puntos": {
+          "R1072": 3
+        }
+      },
+      {
+        "id": "A2",
+        "condiciones": [
+          {
+            "pregunta": "sst_06",
+            "igual_a": "Entre 60% y 85% (moderadamente aceptable)"
+          }
+        ],
+        "puntos": {
+          "R1072": 1,
+          "R45001": 1
+        }
+      },
+      {
+        "id": "A3",
+        "condiciones": [
+          {
+            "pregunta": "sst_06",
+            "igual_a": "Más de 85% (aceptable)"
+          }
+        ],
+        "puntos": {
+          "R45001": 2
+        }
+      },
+      {
+        "id": "C1",
+        "condiciones": [
+          {
+            "pregunta": "sst_08",
+            "igual_a": "Sí, un cliente clave lo exige"
+          }
+        ],
+        "puntos": {
+          "R45001": 4
+        }
+      },
+      {
+        "id": "C2",
+        "condiciones": [
+          {
+            "pregunta": "sst_08",
+            "igual_a": "Sí, lo piden en licitaciones"
+          }
+        ],
+        "puntos": {
+          "R45001": 3
+        }
+      },
+      {
+        "id": "C3",
+        "condiciones": [
+          {
+            "pregunta": "sst_08",
+            "igual_a": "Lo valoran, pero no lo exigen"
+          }
+        ],
+        "puntos": {
+          "R45001": 1
+        }
+      },
+      {
+        "id": "G1",
+        "condiciones": [
+          {
+            "pregunta": "sst_09",
+            "contiene_alguno": [
+              "ISO 9001",
+              "ISO 14001"
+            ]
+          }
+        ],
+        "puntos": {
+          "R45001": 2
+        }
+      },
+      {
+        "id": "K1",
+        "condiciones": [
+          {
+            "pregunta": "sst_10",
+            "igual_a": "Sí, de forma permanente"
+          }
+        ],
+        "puntos": {
+          "R1072": 2,
+          "R45001": 1
+        }
+      },
+      {
+        "id": "D1",
+        "condiciones": [
+          {
+            "pregunta": "sst_11",
+            "igual_a": "Alto: responsable dedicado y presupuesto"
+          }
+        ],
+        "puntos": {
+          "R45001": 2
+        }
+      },
+      {
+        "id": "D2",
+        "condiciones": [
+          {
+            "pregunta": "sst_11",
+            "igual_a": "Bajo: sin recursos asignados"
+          }
+        ],
+        "puntos": {
+          "R0312": 1,
+          "R1072": 1
+        }
+      },
+      {
+        "id": "O1",
+        "condiciones": [
+          {
+            "pregunta": "sst_01",
+            "igual_a": "Cumplir lo mínimo exigido por la ley"
+          }
+        ],
+        "puntos": {
+          "R0312": 2,
+          "R1072": 1
+        }
+      },
+      {
+        "id": "O2",
+        "condiciones": [
+          {
+            "pregunta": "sst_01",
+            "igual_a": "Tener un SG-SST completo y funcional"
+          }
+        ],
+        "puntos": {
+          "R1072": 3
+        }
+      },
+      {
+        "id": "O3",
+        "condiciones": [
+          {
+            "pregunta": "sst_01",
+            "igual_a": "Certificarse en ISO 45001"
+          }
+        ],
+        "puntos": {
+          "R45001": 3
+        }
+      },
+      {
+        "id": "O4",
+        "condiciones": [
+          {
+            "pregunta": "sst_01",
+            "igual_a": "Responder a un requerimiento de la ARL o del Ministerio"
+          }
+        ],
+        "puntos": {
+          "R1072": 3
+        }
+      }
+    ],
+    "bloqueos": [
+      {
+        "id": "B1",
+        "condiciones": [
+          {
+            "pregunta": "sst_06",
+            "en": [
+              "No se ha realizado",
+              "Menos de 60% (crítico)"
+            ]
+          }
+        ],
+        "efecto": "Si gana R45001, recomendar ruta escalonada: primero cerrar brechas legales (R1072) y luego certificar. No ofrecer ISO 45001 como fase inicial."
+      },
+      {
+        "id": "B2",
+        "condiciones": [
+          {
+            "pregunta": "sst_02",
+            "en": [
+              "IV",
+              "V"
+            ]
+          }
+        ],
+        "efecto": "No recomendar R0312 como ruta única; mínimo R1072."
+      },
+      {
+        "id": "B3",
+        "condiciones": [
+          {
+            "pregunta": "sst_04",
+            "contiene_alguno": [
+              "Trabajo en alturas",
+              "Espacios confinados",
+              "Riesgo químico",
+              "Riesgo eléctrico"
+            ]
+          }
+        ],
+        "efecto": "No recomendar R0312 como ruta única; incluir programas de peligros críticos."
+      },
+      {
+        "id": "B4",
+        "condiciones": [
+          {
+            "pregunta": "sst_11",
+            "igual_a": "Bajo: sin recursos asignados"
+          }
+        ],
+        "efecto": "Si gana R45001, advertir riesgo de sostenibilidad del sistema y sugerir R1072 primero."
+      }
+    ],
+    "salida": [
+      "puntaje_por_ruta",
+      "ruta_recomendada",
+      "ruta_escalonada_sugerida",
+      "numero_estandares_0312_aplicables",
+      "justificacion_por_regla",
+      "alertas_por_bloqueo"
+    ]
+  }
+}

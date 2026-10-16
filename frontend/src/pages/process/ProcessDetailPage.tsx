@@ -2,11 +2,20 @@ import { useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { FileText, ClipboardCheck, BarChart3, ArrowLeft, CheckCircle, RotateCcw } from 'lucide-react';
 import { useProcess } from '../../hooks/useProcess';
+import { processRequirementLabel } from '../../api/process';
 import { useFindings } from '../../hooks/usePlan';
-import { useCompleteProcess, useReopenProcess } from '../../hooks/useProcesses';
+import { useCompleteProcess, useReopenProcess, useSetNeedsCertification } from '../../hooks/useProcesses';
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { ErrorState } from '../../components/ui/ErrorState';
 import { getErrorMessage } from '../../lib/error-utils';
+
+const STATUS_LABEL: Record<string, string> = {
+  in_diagnosis: 'en diagnóstico',
+  plan_ready: 'con plan listo',
+  in_progress: 'en progreso',
+  profiling_pending: 'perfilamiento pendiente',
+  completed: 'completado',
+};
 
 export const ProcessDetailPage = () => {
   const { processId } = useParams();
@@ -15,6 +24,7 @@ export const ProcessDetailPage = () => {
   const { data: findings } = useFindings(processId ?? null);
   const completeProcess = useCompleteProcess();
   const reopenProcess = useReopenProcess();
+  const setNeedsCertification = useSetNeedsCertification();
   const [showCompleteConfirm, setShowCompleteConfirm] = useState(false);
   const [showReopenConfirm, setShowReopenConfirm] = useState(false);
 
@@ -75,19 +85,26 @@ export const ProcessDetailPage = () => {
               {process.company_name || '(sin empresa)'}
             </h1>
             <span className="px-3 py-1 bg-app-accent/10 text-app-accent text-sm font-medium rounded-full">
-              {process.iso_standard}
+              {processRequirementLabel(process)}
             </span>
           </div>
           <p className="text-app-muted">
             Proceso de certificación{' '}
-            {process.status === 'in_diagnosis'
-              ? 'en diagnóstico'
-              : process.status === 'plan_ready'
-                ? 'con plan listo'
-                : process.status === 'in_progress'
-                  ? 'en progreso'
-                  : 'completado'}
+            {STATUS_LABEL[process.status] ?? 'pendiente'}
           </p>
+
+          <label className="mt-3 mb-3 inline-flex items-center gap-2 text-sm font-medium text-app-text cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={process.needs_certification}
+              disabled={setNeedsCertification.isPending}
+              onChange={(e) =>
+                setNeedsCertification.mutate({ processId: processId!, value: e.target.checked })
+              }
+              className="w-4 h-4 rounded border-app-border text-app-accent focus:ring-app-accent disabled:opacity-50"
+            />
+            Necesita certificación ISO
+          </label>
 
           {process.status !== 'completed' && (
             <button

@@ -1,55 +1,65 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { Loader2, AlertCircle, Sparkles, Building2, Award, Leaf, HardHat, Check, Plus } from 'lucide-react';
+import { Loader2, AlertCircle, Sparkles, Building2, Check, Plus, TrendingUp, HardHat, FileText, Leaf, BarChart3, Lock } from 'lucide-react';
 import { useCompanies } from '../../../hooks/useCompanies';
 import { useStartProcess } from '../../../hooks/useStartProcess';
+import { useProcessDuplicates } from '../../../hooks/useProcessDuplicates';
+import { MODULE_LABELS, type PerfilamientoModule } from '../../../api/process';
 import { SelectNative } from '../../../components/ui/Select';
 import { Card, CardHeader, CardTitle, CardContent } from '../../../components/ui/Card';
 import { CompanyForm } from '../../../components/companies/CompanyForm';
 
-type ISOStandard = 'iso9001' | 'iso14001' | 'iso45001';
-
-// Enrichment: configuration step split into two distinct cards (Empresa / Norma ISO)
-// with richer, selectable ISO cards so high-level choices read as a single visual unit.
-const ISO_OPTIONS: { value: ISOStandard; label: string; description: string; icon: typeof Award }[] = [
-  { value: 'iso9001', label: 'ISO 9001:2015', description: 'Sistema de Gestión de la Calidad', icon: Award },
-  { value: 'iso14001', label: 'ISO 14001:2015', description: 'Sistema de Gestión Ambiental', icon: Leaf },
-  { value: 'iso45001', label: 'ISO 45001:2018', description: 'Seguridad y Salud en el Trabajo', icon: HardHat },
+// Enrichment: configuration step offers a grid of requirement modules instead of
+// raw ISO norms, plus an explicit "needs certification" toggle. Each module maps to
+// a perfilamiento question group downstream.
+const MODULE_OPTIONS: { value: PerfilamientoModule; description: string; icon: typeof TrendingUp }[] = [
+  { value: 'optimizacion', description: 'Estandarización, ISO 9001 y mejora continua', icon: TrendingUp },
+  { value: 'sst', description: 'SG-SST, estándares mínimos e ISO 45001', icon: HardHat },
+  { value: 'nts', description: 'Normas y reglamentos técnicos del sector', icon: FileText },
+  { value: 'sos', description: 'ISO 14001, huella de carbono y ESG', icon: Leaf },
+  { value: 'planificacion', description: 'Planeación estratégica, BSC y OKR', icon: BarChart3 },
 ];
 
 interface FormData {
   company_id: string;
-  iso_standard: ISOStandard;
+  module: PerfilamientoModule;
+  needs_certification: boolean;
 }
 
 interface StepSetupProps {
-  onCreated: (processId: string, isoStandard: ISOStandard) => void;
-  onDirtyChange: (dirty: boolean) => void;
+  onCreated: (processId: string, module: PerfilamientoModule) => void;
 }
 
-export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
+export function StepSetup({ onCreated }: StepSetupProps) {
   const { data: companies = [], isLoading: companiesLoading } = useCompanies();
   const startProcess = useStartProcess();
   const [error, setError] = useState<string | null>(null);
   const [showCreateCompany, setShowCreateCompany] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const { register, handleSubmit, setValue, control, formState: { errors, isDirty } } = useForm<FormData>({
+  const { register, handleSubmit, setValue, control, formState: { errors } } = useForm<FormData>({
     defaultValues: {
       company_id: '',
-      iso_standard: 'iso9001' as ISOStandard,
+      module: 'optimizacion' as PerfilamientoModule,
+      needs_certification: false,
     },
     mode: 'onChange',
   });
 
-  // Notify parent about dirty state
-  useEffect(() => {
-    onDirtyChange(isDirty || submitting);
-  }, [isDirty, submitting, onDirtyChange]);
-
-  const selectedIso = useWatch({ control, name: 'iso_standard' });
+  const selectedModule = useWatch({ control, name: 'module' });
   const selectedCompany = useWatch({ control, name: 'company_id' });
-  const canSubmit = !!selectedCompany && !!selectedIso && !companiesLoading && !submitting;
+
+  // Dedup: once a company is selected, fetch which modules already have an active
+  // process so the user cannot start a duplicate.
+  const {
+    data: duplicates,
+    isLoading: duplicatesLoading,
+    isFetching: duplicatesFetching,
+  } = useProcessDuplicates(selectedCompany || null);
+  const takenModules = new Set(duplicates.taken_modules);
+  const selectedTaken = takenModules.has(selectedModule);
+  const canSubmit = !!selectedCompany && !!selectedModule && !selectedTaken
+    && !companiesLoading && !submitting && !duplicatesLoading && !duplicatesFetching;
 
   async function onSubmit(data: FormData) {
     setError(null);
@@ -57,9 +67,10 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
     try {
       const process = await startProcess.mutateAsync({
         company_id: data.company_id,
-        iso_standard: data.iso_standard as ISOStandard,
+        perfilamiento_module: data.module,
+        needs_certification: data.needs_certification,
       });
-      onCreated(process.id, data.iso_standard as ISOStandard);
+      onCreated(process.id, data.module);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al crear el proceso');
       setSubmitting(false);
@@ -128,51 +139,60 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
               </CardContent>
             </Card>
 
-            {/* Norma ISO card */}
+            {/* Module card */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <span className="w-8 h-8 rounded-lg bg-app-accent/10 flex items-center justify-center">
-                    <Award className="w-4 h-4 text-app-accent" aria-hidden="true" />
+                    <Sparkles className="w-4 h-4 text-app-accent" aria-hidden="true" />
                   </span>
-                  Norma ISO
+                  Módulo de perfilamiento
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  {ISO_OPTIONS.map((opt) => {
+                  {MODULE_OPTIONS.map((opt) => {
                     const Icon = opt.icon;
-                    const selected = selectedIso === opt.value;
+                    const selected = selectedModule === opt.value;
+                    const taken = takenModules.has(opt.value);
                     return (
                       <label
                         key={opt.value}
-                        className={`flex items-start gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
-                          selected
-                            ? 'border-app-accent bg-app-accent/10 shadow-sm'
-                            : 'border-app-border hover:border-app-accent/50 hover:bg-app-bg'
+                        className={`flex items-start gap-3 p-4 border rounded-xl transition-all ${
+                          taken
+                            ? 'border-app-border bg-app-bg opacity-50 cursor-not-allowed'
+                            : selected
+                              ? 'border-app-accent bg-app-accent/10 shadow-sm cursor-pointer'
+                              : 'border-app-border hover:border-app-accent/50 hover:bg-app-bg cursor-pointer'
                         }`}
                       >
                         <input
                           type="radio"
                           value={opt.value}
-                          {...register('iso_standard', { required: 'Seleccione una norma ISO' })}
+                          disabled={taken}
+                          {...register('module', { required: 'Seleccione un módulo' })}
                           className="sr-only"
                         />
                         <span
                           className={`mt-0.5 w-9 h-9 rounded-lg flex items-center justify-center transition-colors ${
-                            selected ? 'bg-app-accent text-white' : 'bg-app-bg text-app-muted'
+                            selected && !taken ? 'bg-app-accent text-white' : 'bg-app-bg text-app-muted'
                           }`}
                         >
                           <Icon className="w-5 h-5" aria-hidden="true" />
                         </span>
                         <span className="flex-1">
                           <span className="flex items-center justify-between">
-                            <span className="font-semibold text-app-text">{opt.label}</span>
-                            {selected && (
+                            <span className="font-semibold text-app-text">{MODULE_LABELS[opt.value]}</span>
+                            {taken ? (
+                              <span className="inline-flex items-center gap-1 text-xs text-app-muted">
+                                <Lock className="w-3.5 h-3.5" aria-hidden="true" />
+                                Ya existe un proceso
+                              </span>
+                            ) : selected ? (
                               <span className="w-5 h-5 rounded-full bg-app-accent text-white flex items-center justify-center">
                                 <Check className="w-3 h-3" aria-hidden="true" />
                               </span>
-                            )}
+                            ) : null}
                           </span>
                           <span className="block text-sm text-app-muted">{opt.description}</span>
                         </span>
@@ -180,7 +200,19 @@ export function StepSetup({ onCreated, onDirtyChange }: StepSetupProps) {
                     );
                   })}
                 </div>
-                {errors.iso_standard && <p className="text-red-500 text-xs mt-1">{errors.iso_standard.message}</p>}
+                {duplicatesLoading && selectedCompany && (
+                  <p className="text-xs text-app-muted mt-2">Verificando módulos disponibles...</p>
+                )}
+                {errors.module && <p className="text-red-500 text-xs mt-1">{errors.module.message}</p>}
+
+                <label className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-app-text cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    {...register('needs_certification')}
+                    className="w-4 h-4 rounded border-app-border text-app-accent focus:ring-app-accent"
+                  />
+                  Necesita certificación ISO
+                </label>
               </CardContent>
             </Card>
           </div>

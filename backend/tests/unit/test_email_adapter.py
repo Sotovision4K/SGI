@@ -65,6 +65,27 @@ class TestSESAdapter:
             assert "info@acme.com" in dest.get("ToAddresses", [])
 
     @pytest.mark.asyncio
+    async def test_empty_iso_standard_omits_iso_clause(self):
+        """iso_standard="" must not render the dangling "bajo la norma ." clause."""
+        with patch("src.adapters.email.ses_adapter.boto3") as mock_boto3:
+            mock_client = MagicMock()
+            mock_boto3.client.return_value = mock_client
+
+            from src.adapters.email.ses_adapter import SESAdapter
+
+            adapter = SESAdapter(_fake_settings(email_enabled=True))
+            await adapter.send_welcome_email("info@acme.com", "Acme SA", "")
+
+            mock_client.send_email.assert_called_once()
+            body = mock_client.send_email.call_args.kwargs["Message"]["Body"]
+            html, text = body["Html"]["Data"], body["Text"]["Data"]
+
+            assert "bajo la norma ." not in html
+            assert "bajo la norma ." not in text
+            # No empty emphasis wrapper left behind.
+            assert "<strong></strong>" not in html
+
+    @pytest.mark.asyncio
     async def test_boto3_error_logged_not_raised(self, caplog):
         """A boto3 failure must be logged but never propagate to the caller."""
         with patch("src.adapters.email.ses_adapter.boto3") as mock_boto3:

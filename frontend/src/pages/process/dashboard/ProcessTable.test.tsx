@@ -34,6 +34,8 @@ vi.mock('../../../lib/use-api-auth', () => ({
 vi.mock('../../../api/process', () => ({
   completeProcess: (...a: unknown[]) => mockCompleteProcess(...a),
   reopenProcess: (...a: unknown[]) => mockReopenProcess(...a),
+  processRequirementLabel: (p: { iso_standard: string | null; perfilamiento_module: string | null }) =>
+    p.iso_standard ?? p.perfilamiento_module ?? '',
 }));
 
 vi.mock('../../../components/ui/toast', () => ({
@@ -48,7 +50,9 @@ const ACTIVE_PROCESS: Process = {
   company_id: 'c-1',
   company_name: 'Acme Inc',
   iso_standard: 'iso9001',
+  perfilamiento_module: 'optimizacion',
   status: 'in_progress',
+  needs_certification: false,
   created_at: '2025-01-01T00:00:00Z',
   updated_at: '2025-01-01T00:00:00Z',
 };

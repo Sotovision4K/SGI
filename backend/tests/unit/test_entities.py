@@ -49,10 +49,11 @@ class TestProcessEntity:
                 iso_standard="iso27001",
             )
 
-    def test_status_enum_has_four_values(self):
+    def test_status_enum_has_five_values(self):
         from src.domain.entities.process import ProcessStatus
 
         assert {s.value for s in ProcessStatus} == {
+            "profiling_pending",
             "in_diagnosis",
             "plan_ready",
             "in_progress",
@@ -85,6 +86,19 @@ class TestProcessEntity:
         )
         assert p.created_at.tzinfo is not None
         assert p.created_at.tzinfo == timezone.utc
+
+
+class TestPerfilamientoModule:
+    def test_module_has_five_values(self):
+        from src.domain.entities.process import PerfilamientoModule
+
+        assert {m.value for m in PerfilamientoModule} == {
+            "optimizacion",
+            "sst",
+            "nts",
+            "sos",
+            "planificacion",
+        }
 
 
 class TestFindingEntity:

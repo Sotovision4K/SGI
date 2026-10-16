@@ -186,3 +186,138 @@ here because the fix we shipped is a **stopgap**, not a final design.
   `_SEGMENT_TIMEOUT_SECONDS` < `LEASE_TTL_SECONDS` < Lambda timeout < visibility timeout
   with real margin; add a guard/test that a persisted plan with **zero tasks** cannot happen
   (e.g. a post-merge "no tasks" check or a prompt-level assertion).
+
+---
+
+# DB access architecture findings (2026-10-07)
+
+Not from the security audit — these came from an exploration of the backend's database
+access patterns (no `sessionmaker`, no session separation). Tracked because the current
+shape is workable but will not scale cleanly and has several raw-SQL leaks.
+
+## Summary
+
+| ID | Severity | Status | Area | Fix in |
+|----|----------|--------|------|--------|
+| TD-2 | Medium | Open | DB session/engine layer | Unscheduled (proposed refactor) |
+
+## TD-2 — No session-management layer; DB access only loosely separated
+
+- **Source:** exploration of `backend/` (2026-10-07); no code written for this entry.
+- **Why it's debt:**
+  1. **No `sessionmaker`/`async_sessionmaker` anywhere.** Every repository method opens a
+     session inline: `async with AsyncSession(self._engine) as session:`
+     (`process_repository.py` ~24 occurrences; `company_repository.py`; `user_repository.py`).
+     There is **no session factory, no per-request session dependency, and no unit-of-work**.
+  2. **The engine factory lives in the wrong module.** `get_engine(database_url)` is cached
+     in a **module-level global** `_engine` inside `backend/src/adapters/db/user_repository.py:50-70`
+     (not `lru_cache`). Every other module imports it from there
+     (`company_repository.py:6`, `process_repository.py:15`, `main.py:19`,
+     `routes/processes/routes.py:194`). There is no dedicated DB/connection module and
+     `adapters/db/__init__.py` is empty.
+  3. **Direct DB leaks outside `adapters/db`:**
+     - `backend/src/routes/processes/routes.py:193-199` — `_hydrate_company_name()` imports
+       `CompanyTable`, `get_engine`, `AsyncSession` and queries inside a **route module**.
+     - `backend/src/main.py:36-38` — lifespan `get_engine()` + `engine.begin()`.
+     - `backend/src/trigger/post_signup_trigger.py:37-63` — a **separate raw synchronous
+       psycopg3** path (`psycopg.connect`, `cur.execute("INSERT INTO users ...")`) that
+       bypasses SQLAlchemy/SQLModel entirely.
+     - `backend/alembic/env.py` — its own engine (expected for migrations, noted for
+       completeness).
+  4. **Thin abstraction boundary:** only user access is behind an interface
+     (`UserRepositoryPort`). `ProcessRepository`/`CompanyRepository` are concrete classes
+     depended on directly and return plain `dict`s (not domain entities).
+  5. **Duplicated DI providers:** `get_process_repository` /
+     `get_company_repository` are re-declared per route module
+     (`routes/processes/routes.py:34-45`, `routes/companies/routes.py:21-32`,
+     `routes/profiling/routes.py:31-35`); the worker constructs
+     `ProcessRepository(...)` directly (`workers/plan_generation_worker.py:47`).
+- **Why it matters:** inconsistent session lifecycles make transactions/atomicity harder to
+  reason about, block a proper unit-of-work, and spread DB knowledge (schema + engine) into
+  route/service/trigger layers. It also makes swapping the engine/pool config a
+  cross-cutting change.
+- **Proposed fix (refactor, not urgent):**
+  1. New `backend/src/adapters/db/session.py` (or `db.py`): `get_engine(database_url)`
+     (moved out of `user_repository.py`) + `async_sessionmaker` + a `get_session()` FastAPI
+     dependency yielding an `AsyncSession`.
+  2. Inject the session into repositories (per-request unit-of-work) instead of each method
+     opening its own `AsyncSession(self._engine)`.
+  3. Close the leaks: move `_hydrate_company_name`'s query behind a repository; keep the
+     lifespan check but route it through the shared engine; review/unify the raw-psycopg
+     trigger path.
+  4. Deduplicate the DI providers into one place per repository.
+- **Acceptance:** a single session factory + per-request session DI; no `AsyncSession(...)`
+  construction outside the db module/repositories; repositories accept an injected session;
+  one provider per repository (no duplicates); direct-SQL leaks removed (route, lifespan,
+  trigger). Tests continue to use the real in-memory SQLite engine via the same factory.
+- **Note:** this is orthogonal to the profiling feature (Phases 1–2); flagged so the
+  refactor can be scheduled before more DB-touching features land.
+
+---
+
+# Perfilamiento (wizard refactor) findings (2026-10-08)
+
+From the Phase 3 security/code review of `PUT /processes/{id}/perfilamiento` and
+`PUT /processes/{id}/analysis`. Deliberately deferred (owner decision) — not blocking
+Phase 3.
+
+## Summary
+
+| ID | Severity | Status | Area | Fix in |
+|----|----------|--------|------|--------|
+| TD-3 | Medium | Open | `analysis_result` input boundary | Unscheduled |
+| TD-4 | Low | Open | Profiling write rate limiting | Unscheduled |
+
+## TD-3 — `analysis_result` payload has no size caps (DB bloat / oversized responses)
+
+- **Source:** Phase 3 — `backend/src/routes/processes/routes.py` (`UpdateAnalysisRequest`,
+  `analysis_result: dict`) and `backend/src/domain/entities/profiling.py`
+  (`ProfilingResult` string/list fields are all unbounded).
+- **Why it's debt:** unlike `answers`/`pain_points` (each capped at 2000/5000 chars),
+  `analysis_result` is written verbatim to the `processes.analysis_result` TEXT column and
+  echoed in full by `GET /processes/{id}`. An authenticated owner can repeatedly PUT
+  multi-MB payloads (only infra limits apply), inflating storage and every subsequent
+  `GET` response.
+- **Fix:** add `Field(max_length=...)` to the string fields and item-count caps to the
+  list fields in `ProfilingResult`/its strict variant (e.g. `pain_points_analysis ≤ 20000`,
+  `breakdown ≤ 50`, `activities ≤ 50`), and reject oversized payloads at the route.
+
+## TD-4 — No rate limiting on the two new write endpoints
+
+- **Source:** Phase 3 — `PUT /processes/{id}/perfilamiento` and `PUT /processes/{id}/analysis`.
+- **Why it's debt:** `generate_plan` calls `check_rate_limit(...)`; neither new endpoint
+  does. Combined with TD-3, an authenticated caller can hammer them with large payloads
+  with no throttle.
+- **Fix:** add `check_rate_limit(current_user.get("sub", "unknown"), max_requests=…,
+  window=…)` at the top of both handlers (mirroring `generate_plan`), ideally with a
+  durable (DB-backed) limiter per the L5 note above.
+
+---
+
+# Certificación step findings (2026-10-16)
+
+From the architect review of the certification step plan (dedup scope decision:
+**per-consultant**). Deferred by decision, not blocking.
+
+## Summary
+
+| ID | Severity | Status | Area | Fix in |
+|----|----------|--------|------|--------|
+| TD-5 | Low | Open | ISO dedup partial unique index | Only if rule changes to per-company |
+
+## TD-5 — ISO dedup index is per-consultant; per-company would need a new migration
+
+- **Source:** certification step (planned) — partial unique index on
+  `processes (company_id, consultant_id, iso_standard) WHERE iso_standard IS NOT NULL
+  AND status <> 'completed'`.
+- **Why it's debt:** the index enforces dedup **per-consultant**, matching the existing
+  `check-duplicate` / `list_active_by_company` (both scope by `consultant_id`). If the
+  business rule should instead be **per-company** (block two different auditors from
+  certifying the same company against the same ISO concurrently), the index must drop
+  `consultant_id`, and `list_active_by_company` + `check-duplicate` must be re-scoped in
+  the same migration — otherwise cross-auditor duplicates remain possible.
+- **Fix (only if the rule changes to per-company):** new Alembic migration dropping the
+  per-consultant index and adding `(company_id, iso_standard)`; update
+  `list_active_by_company` to scope by `company_id` only; update `check-duplicate`
+  semantics and the frontend `useProcessDuplicates` pre-warning accordingly.
+
