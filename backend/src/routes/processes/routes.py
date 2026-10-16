@@ -421,9 +421,10 @@ async def get_process(
     process_id: UUID,
     current_user: CurrentUserDep,
     repo: ProcessRepositoryDep,
+    settings: Settings = Depends(get_settings),
 ) -> ProcessDetailResponse:
     process = await _require_process_owner(process_id, repo, current_user)
-    return await _hydrate_and_detail(process, get_settings())
+    return await _hydrate_and_detail(process, settings)
 
 
 @router.delete("/{process_id}", status_code=204)
