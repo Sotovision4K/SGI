@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { Loader2 } from 'lucide-react';
-import type { ProfilingQuestionnaire, ProfilingQuestion, ProfilingSubmission, ModuleKey } from '../../api/profiling';
-import { MODULE_LABELS } from '../../api/process';
+import type { ProfilingQuestionnaire, ProfilingQuestion, ProfilingSubmission } from '../../api/profiling';
+import { MODULE_LABELS, type PerfilamientoModule } from '../../api/process';
 import { moduleFromLabel, isAlwaysVisibleGroup } from './module-map';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Progress } from '../../components/ui/Progress';
@@ -12,7 +12,7 @@ interface ProfilingFormProps {
   onSubmit: (submission: ProfilingSubmission) => void;
   isSubmitting?: boolean;
   /** Pre-seed the base_08 selector with this module (still user-changeable). */
-  initialModule?: ModuleKey;
+  initialModule?: PerfilamientoModule;
   /** Existing answers (resume/edit). Overrides the initialModule seed. */
   defaultValues?: Record<string, string>;
 }

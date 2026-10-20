@@ -1,6 +1,6 @@
 import { profilingQuestionnaire } from '../data/profiling';
 import { apiRequest } from '../lib/api-client';
-import type { ApiCallOptions } from './process';
+import type { ApiCallOptions, PerfilamientoModule } from './process';
 
 export type ProfilingQuestionType = 'text' | 'textarea' | 'select' | 'cards' | 'chips';
 
@@ -45,13 +45,11 @@ export interface ProfilingQuestionnaire {
   reglas_motor_sst?: unknown;
 }
 
-export type ModuleKey = 'optimizacion' | 'sst' | 'nts' | 'sos' | 'planificacion';
-
 export interface ProfilingSubmission {
   answers: Record<string, string>;
   /** Auditor's free-text pain points. */
   painPoints: string;
-  module: ModuleKey | null;
+  module: PerfilamientoModule | null;
 }
 
 export interface CostEstimation {

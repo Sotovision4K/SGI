@@ -1901,6 +1901,58 @@ class TestPerfilamientoAndAnalysisRoutes:
         assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
         mock_repo.update_analysis.assert_not_awaited()
 
+    def test_put_analysis_rejects_oversized_payload(self, client, mock_current_user):
+        """Size caps: an oversized pain_points_analysis is rejected at the boundary."""
+        process = self._owned_process(mock_current_user)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        payload = self._valid_analysis()
+        payload["pain_points_analysis"] = "x" * 20001
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            r = client.put(
+                f"/processes/{process.id}/analysis",
+                json={"analysis_result": payload},
+            )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 422, f"expected 422, got {r.status_code}: {r.text[:200]}"
+        mock_repo.update_analysis.assert_not_awaited()
+
+    def test_put_analysis_is_noop_when_already_plan_ready(
+        self, client, mock_current_user
+    ):
+        """Idempotency: re-PUT on a plan_ready process must not write again."""
+        from src.domain.entities.process import ProcessStatus
+
+        process = self._owned_process(mock_current_user, status=ProcessStatus.PLAN_READY)
+        mock_repo = MagicMock()
+        mock_repo.get_process = AsyncMock(return_value=process)
+        mock_repo.update_analysis = AsyncMock()
+
+        fastapi_app = self._app()
+        dep, old = self._override_repo(fastapi_app, mock_repo)
+        try:
+            with patch(
+                "src.routes.processes.routes._hydrate_company_name",
+                AsyncMock(return_value="Test Corp"),
+            ):
+                r = client.put(
+                    f"/processes/{process.id}/analysis",
+                    json={"analysis_result": self._valid_analysis()},
+                )
+        finally:
+            self._restore_repo(fastapi_app, dep, old)
+
+        assert r.status_code == 200, r.text
+        assert r.json()["status"] == "plan_ready"
+        mock_repo.update_analysis.assert_not_awaited()
+
     def test_put_analysis_foreign_process_blocked(self, client, mock_current_user):
         from src.domain.entities.process import Process, IsoStandard, ProcessStatus
 
@@ -2115,3 +2167,23 @@ class TestNeedsCertificationRoute:
                 )
         finally:
             self._restore_repo(fastapi_app, dep, old)
+
+
+class TestSubClaimParsing:
+    """Malformed Cognito ``sub`` claims surface as 400, never 500."""
+
+    def test_list_processes_rejects_malformed_sub(self, client):
+        from src.main import app
+        from src.routes.user.auth import get_current_user
+
+        old = app.dependency_overrides.get(get_current_user)
+        app.dependency_overrides[get_current_user] = lambda: {"sub": "not-a-uuid"}
+        try:
+            r = client.get("/processes")
+        finally:
+            if old is not None:
+                app.dependency_overrides[get_current_user] = old
+            else:
+                app.dependency_overrides.pop(get_current_user, None)
+
+        assert r.status_code == 400, f"expected 400, got {r.status_code}: {r.text[:200]}"

@@ -8,6 +8,7 @@
  * - isAlwaysVisibleGroup returns true only for the base group ids
  */
 import { describe, it, expect } from 'vitest';
+import { MODULE_LABELS } from '../../api/process';
 import { MODULE_BY_LABEL, moduleFromLabel, isAlwaysVisibleGroup } from './module-map';
 
 describe('moduleFromLabel', () => {
@@ -33,6 +34,14 @@ describe('MODULE_BY_LABEL', () => {
       'Sostenibilidad y ambiental': 'sos',
       'Planificación estratégica': 'planificacion',
     });
+  });
+
+  it('is the exact inverse of the canonical MODULE_LABELS map', () => {
+    expect(MODULE_BY_LABEL).toEqual(
+      Object.fromEntries(
+        (Object.entries(MODULE_LABELS) as [string, string][]).map(([key, label]) => [label, key]),
+      ),
+    );
   });
 });
 

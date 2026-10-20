@@ -52,11 +52,30 @@ class TestBuildContext:
 
     def test_chips_list_answers_joined(self):
         ctx = build_context(
-            _process(perfilamiento_answers={"opt_02": ["ISO 14001", "ISO 45001"]}),
+            _process(perfilamiento_answers={"sst_04": ["ISO 14001", "ISO 45001"]}),
             "Acme",
         )
         values = dict(ctx.qa)
         assert any("ISO 14001, ISO 45001" == v for v in values.values())
+
+    def test_only_base_and_selected_module_answers_included(self):
+        """Answers from modules other than the selected one must not leak."""
+        ctx = build_context(
+            _process(
+                perfilamiento_answers={
+                    "base_01": "Empresa SA",
+                    "sst_01": "Cumplir",
+                    "nts_01": "No aplica",
+                    "opt_01": "Sí",
+                }
+            ),
+            "Acme",
+        )
+        values = set(dict(ctx.qa).values())
+        assert "Empresa SA" in values  # base group
+        assert "Cumplir" in values  # selected module (sst)
+        assert "No aplica" not in values  # nts is not selected
+        assert "Sí" not in values  # optimizacion is not selected
 
 
 class TestParseResult:

@@ -36,6 +36,10 @@ _DEFAULT_QUESTIONNAIRE_PATH: Path = (
     Path(__file__).resolve().parents[3] / "questionnaires" / "profiling.json"
 )
 
+# Always-visible questionnaire groups. Every other group is module-specific and
+# is only included when it matches the process's selected module.
+_BASE_GROUP_IDS: frozenset[str] = frozenset({"perfil", "contexto", "selector"})
+
 
 # Q: Should the questionnaire be re-read from disk on every context build?
 # A: No — it is static configuration that only changes at deploy time.
@@ -129,10 +133,15 @@ def build_context(process: Process, company_name: str | None) -> ProfilingContex
     # Q: In what order are Q&A pairs emitted, and which answers are included?
     # A: Questionnaire order, including only questions that have a non-empty
     #    sanitized answer. The special "pain_points" key is handled separately.
+    #    Only the always-visible base groups and the selected module group are
+    #    included — answers saved under other modules never reach the prompt.
     # Decision: Walk the questionnaire so the LLM sees a stable, human-readable
     #    order rather than the arbitrary dict order of perfilamiento_answers.
     qa: list[tuple[str, str]] = []
     for group in load_questionnaire().get("groups", []):
+        group_id = str(group.get("id", ""))
+        if group_id not in _BASE_GROUP_IDS and group_id != module:
+            continue
         for question in group.get("questions", []):
             question_id = question.get("id")
             if question_id is None or question_id == "pain_points":

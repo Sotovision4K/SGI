@@ -74,8 +74,8 @@ class ProfilingResult(BaseModel):
 class StrictCostEstimation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    range_cop: str = Field(min_length=1)
-    breakdown: list[str] = Field(min_length=1)
+    range_cop: str = Field(min_length=1, max_length=500)
+    breakdown: list[str] = Field(min_length=1, max_length=50)
     confidence: Confidence = Field(strict=False)
 
 
@@ -83,29 +83,29 @@ class StrictTimeEstimation(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     months: int = Field(ge=0)
-    phases: list[str] = Field(min_length=1)
+    phases: list[str] = Field(min_length=1, max_length=50)
     confidence: Confidence = Field(strict=False)
 
 
 class StrictActionPlanPhase(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=200)
     duration_weeks: int = Field(ge=0)
-    activities: list[str] = Field(min_length=1)
+    activities: list[str] = Field(min_length=1, max_length=50)
 
 
 class StrictActionPlan(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    phases: list[StrictActionPlanPhase] = Field(min_length=1)
-    milestones: list[str] = Field(min_length=1)
+    phases: list[StrictActionPlanPhase] = Field(min_length=1, max_length=50)
+    milestones: list[str] = Field(min_length=1, max_length=50)
 
 
 class StrictProfilingResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    pain_points_analysis: str = Field(min_length=1)
+    pain_points_analysis: str = Field(min_length=1, max_length=20000)
     cost_estimation: StrictCostEstimation
     time_estimation: StrictTimeEstimation
     action_plan: StrictActionPlan

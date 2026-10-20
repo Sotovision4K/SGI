@@ -1,16 +1,14 @@
-import type { ModuleKey } from '../../api/profiling';
+import { MODULE_LABELS, type PerfilamientoModule } from '../../api/process';
 
 /**
  * Mapping from the selector (base_08) labels to the module group id.
  * Post-rename: "Optimización de Procesos" replaces "Calidad y mejora continua".
+ * Derived from the canonical `MODULE_LABELS` (key → label) so the two maps
+ * cannot drift.
  */
-export const MODULE_BY_LABEL: Record<string, ModuleKey> = {
-  'Optimización de Procesos': 'optimizacion',
-  'Seguridad y salud en el trabajo': 'sst',
-  'Normas técnicas sectoriales': 'nts',
-  'Sostenibilidad y ambiental': 'sos',
-  'Planificación estratégica': 'planificacion',
-};
+export const MODULE_BY_LABEL: Record<string, PerfilamientoModule> = Object.fromEntries(
+  (Object.entries(MODULE_LABELS) as [PerfilamientoModule, string][]).map(([key, label]) => [label, key]),
+);
 
 /** Group ids that are always visible (independent of the selector). */
 export const ALWAYS_VISIBLE_GROUPS = ['perfil', 'contexto', 'selector'] as const;
@@ -19,7 +17,7 @@ export const ALWAYS_VISIBLE_GROUPS = ['perfil', 'contexto', 'selector'] as const
 export const MODULE_GROUP_IDS = ['optimizacion', 'sst', 'nts', 'sos', 'planificacion'] as const;
 
 /** Resolve the selected module key from the selector label, or null when unset. */
-export function moduleFromLabel(label: string): ModuleKey | null {
+export function moduleFromLabel(label: string): PerfilamientoModule | null {
   return MODULE_BY_LABEL[label] ?? null;
 }
 
