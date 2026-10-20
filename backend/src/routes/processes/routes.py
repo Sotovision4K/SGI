@@ -262,6 +262,21 @@ async def _process_detail(
 # ---- Authorization -----------------------------------------------------------
 
 
+def _parse_sub(current_user: dict) -> UUID:
+    """Parse the Cognito ``sub`` claim, surfacing bad input as HTTP 400.
+
+    ``UUID(sub)`` raises ``ValueError`` for a malformed claim, which would
+    otherwise bubble up as a 500. Missing/invalid claims are client errors.
+    """
+    sub = current_user.get("sub")
+    if not sub:
+        raise HTTPException(status_code=400, detail="Sub claim requerido")
+    try:
+        return UUID(sub)
+    except (ValueError, TypeError, AttributeError):
+        raise HTTPException(status_code=400, detail="Sub claim inválido")
+
+
 async def _require_process_owner(
     process_id: UUID,
     repo: ProcessRepository,
@@ -328,10 +343,7 @@ async def list_processes(
     repo: ProcessRepositoryDep,
     status: str | None = Query(None, enum=["active", "completed"]),
 ) -> ProcessListResponse:
-    sub = current_user.get("sub")
-    if not sub:
-        raise HTTPException(status_code=400, detail="Sub claim requerido")
-    consultant_id = UUID(sub)
+    consultant_id = _parse_sub(current_user)
     rows = await repo.list_processes_with_company(consultant_id=consultant_id, status=status)
     items = [_process_to_item(p, name) for p, name in rows]
     return ProcessListResponse(items=items, total=len(items))
@@ -346,9 +358,7 @@ async def create_process(
     email_adapter: EmailDep,
     settings: Settings = Depends(get_settings),
 ) -> ProcessDetailResponse:
-    sub = current_user.get("sub")
-    if not sub:
-        raise HTTPException(status_code=400, detail="Sub claim requerido")
+    consultant_id = _parse_sub(current_user)
 
     # Resolve the company once and verify ownership before creating anything:
     # the caller may only create a process against their own company (prevents
@@ -356,14 +366,14 @@ async def create_process(
     company = await company_repo.get_company(payload.company_id)
     if company is None:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
-    if company.get("user_id") != sub:
+    if company.get("user_id") != str(consultant_id):
         raise HTTPException(status_code=403, detail="No autorizado")
 
     # Certification is deferred to a later step (needs_certification only flags
     # intent up front), so iso_standard stays None and the process starts at
     # PROFILING_PENDING.
     process = Process(
-        consultant_id=UUID(sub),
+        consultant_id=consultant_id,
         company_id=payload.company_id,
         iso_standard=None,
         perfilamiento_module=payload.perfilamiento_module,
@@ -400,10 +410,9 @@ async def check_duplicate(
     Scoped to the caller (consultant_id) so it never leaks another auditor's
     processes. Active = any status except COMPLETED.
     """
-    sub = current_user.get("sub")
-    if not sub:
-        raise HTTPException(status_code=400, detail="Sub claim requerido")
-    processes = await repo.list_active_by_company(company_id=company_id, consultant_id=UUID(sub))
+    processes = await repo.list_active_by_company(
+        company_id=company_id, consultant_id=_parse_sub(current_user)
+    )
     taken_modules = sorted(
         {p.perfilamiento_module.value for p in processes if p.perfilamiento_module}
     )
@@ -568,7 +577,11 @@ async def update_analysis(
     Transition → plan_ready is guarded in the repository: no skip from
     profiling_pending, no downgrade of completed.
     """
-    await _require_process_owner(process_id, repo, current_user)
+    process = await _require_process_owner(process_id, repo, current_user)
+    # Idempotency: plan_ready is terminal for this write. Re-PUT must not bump
+    # updated_at or rewrite the blob; just echo the current detail view.
+    if process.status == ProcessStatus.PLAN_READY:
+        return await _hydrate_and_detail(process, settings)
     saved = await repo.update_analysis(process_id, payload.analysis_result.model_dump(mode="json"))
     return await _hydrate_and_detail(saved, settings)
 
@@ -722,10 +735,9 @@ async def add_task_comment(
 ) -> TaskCommentSchema:
     """Append a comment to a plan task (kanban). 404 if not owned / no such task."""
     await _require_process_owner(process_id, repo, current_user)
-    sub = current_user.get("sub")
-    if not sub:
-        raise HTTPException(status_code=400, detail="Sub claim requerido")
-    comment = await repo.add_task_comment(process_id, task_id, UUID(sub), payload.body)
+    comment = await repo.add_task_comment(
+        process_id, task_id, _parse_sub(current_user), payload.body
+    )
     if comment is None:
         raise HTTPException(status_code=404, detail="Tarea no encontrada")
     return TaskCommentSchema(

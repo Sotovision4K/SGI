@@ -265,10 +265,15 @@ Phase 3.
 
 | ID | Severity | Status | Area | Fix in |
 |----|----------|--------|------|--------|
-| TD-3 | Medium | Open | `analysis_result` input boundary | Unscheduled |
+| TD-3 | Medium | Fixed | `analysis_result` input boundary | Increment 5 |
 | TD-4 | Low | Open | Profiling write rate limiting | Unscheduled |
 
 ## TD-3 — `analysis_result` payload has no size caps (DB bloat / oversized responses)
+
+> **Fixed (Increment 5):** the `Strict*` write-boundary models now enforce
+> `pain_points_analysis ≤ 20000`, `range_cop ≤ 500`, `phase.name ≤ 200`, and
+> ≤ 50 items for `breakdown`, `time_estimation.phases`, `action_plan.phases`,
+> `action_plan.milestones`, and phase `activities` (422 on violation).
 
 - **Source:** Phase 3 — `backend/src/routes/processes/routes.py` (`UpdateAnalysisRequest`,
   `analysis_result: dict`) and `backend/src/domain/entities/profiling.py`
